@@ -1,0 +1,14 @@
+# Node dependency directory
+node_modules/
+
+# Local databases & logs
+*.log
+sessions.db
+quantumclk_test_cookies.txt
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Environments
+.env
