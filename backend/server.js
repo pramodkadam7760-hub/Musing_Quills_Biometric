@@ -606,6 +606,42 @@ app.post('/api/hardware/enroll', async (req, res) => {
   }
 });
 
+// POST: Hardware delete endpoint (triggered by ESP32 delete options)
+app.post('/api/hardware/delete', async (req, res) => {
+  const { fingerprint_id } = req.body;
+  try {
+    if (!fingerprint_id) {
+      return res.status(400).json({ error: 'fingerprint_id is required' });
+    }
+    
+    // 1. Fetch employee to log deletion info
+    const findRes = await db.query('SELECT id, first_name, last_name FROM employees WHERE fingerprint_id = $1', [fingerprint_id]);
+    
+    if (findRes.rows.length === 0) {
+      console.log(`[HARDWARE] Delete: No employee found with fingerprint slot #${fingerprint_id}`);
+      return res.json({ success: true, message: 'No employee matched this fingerprint slot in database' });
+    }
+    
+    const empId = findRes.rows[0].id;
+    const empName = `${findRes.rows[0].first_name} ${findRes.rows[0].last_name}`;
+    
+    // 2. Delete employee from database
+    await db.query('DELETE FROM employees WHERE id = $1', [empId]);
+    
+    // 3. Log the deletion in attendance_logs for audit
+    await db.query(`
+      INSERT INTO attendance_logs (employee_id, employee_name, action, device)
+      VALUES ($1, $2, $3, $4)
+    `, [empId, empName, 'DELETE', 'ESP32_READER_1']);
+    
+    console.log(`[HARDWARE] Deleted employee ${empName} (ID: ${empId}) via ESP32 deletion of slot #${fingerprint_id}`);
+    res.json({ success: true, message: `Employee ${empName} successfully deleted from website database` });
+  } catch (err) {
+    console.error('[HARDWARE] Delete error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============================================================
 // DOCUMENT MANAGEMENT (Protected)
 // ============================================================
