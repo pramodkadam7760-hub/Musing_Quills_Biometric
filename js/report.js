@@ -461,13 +461,13 @@ function renderMonthlyDashboard() {
 
 function renderComplianceReport() {
   const filteredEmps = getFilteredEmployees();
-  const WORK_DAYS = 26;
+  const WORK_DAYS = PAYROLL_SETTINGS.workDays || 26;
   const compData = filteredEmps.map(emp => {
     const history = getFilteredHistory(emp.id);
     const totalWorkDays = history.filter(r => !['Weekly Off', 'Holiday', '—'].includes(r.status)).length;
     const presentDays = history.filter(r => ['Present', 'Work From Home', 'Half Day'].includes(r.status)).length;
     const attPct = totalWorkDays > 0 ? Math.round((presentDays / totalWorkDays) * 100) : 0;
-    const lateCount = history.filter(r => r.delay > 0).length;
+    const lateCount = history.filter(r => r.delay > LATE_PENALTY.graceMinutes).length;
     const totalHours = history.reduce((s, r) => s + (r.hours || 0), 0);
     const expectedHours = presentDays * getExpectedHours(emp);
     const shortHours = presentDays > 0 && totalHours < expectedHours * 0.9;
@@ -475,7 +475,7 @@ function renderComplianceReport() {
   });
 
   const below90 = compData.filter(d => d.attPct < 90);
-  const repeatedLate = compData.filter(d => d.lateCount >= 3);
+  const repeatedLate = compData.filter(d => d.lateCount >= LATE_PENALTY.warningThreshold);
   const frequentShort = compData.filter(d => d.shortHours);
   const excessive = compData.filter(d => d.attPct < 60);
 
@@ -507,8 +507,8 @@ function renderComplianceReport() {
     `;
   } else if (activeComplianceFilter === 'repeatedLate') {
     currentList = repeatedLate;
-    tableHeader = 'Employees with Repeated Late Arrivals (3+ late marks)';
-    emptyMessage = 'All Clear! No employees with 3+ late arrivals';
+    tableHeader = `Employees with Repeated Late Arrivals (${LATE_PENALTY.warningThreshold}+ late marks)`;
+    emptyMessage = `All Clear! No employees with ${LATE_PENALTY.warningThreshold}+ late arrivals`;
     tableBody = `
       <table>
         <thead><tr><th>Employee</th><th>Department</th><th>Late Marks</th><th>Present Days</th><th>Working Days</th></tr></thead>
@@ -583,7 +583,7 @@ function renderComplianceReport() {
         <div class="compliance-card-icon"><i class="ti ti-alarm"></i></div>
         <div class="compliance-card-info">
           <h4>Repeated Late Arrivals</h4>
-          <p>3+ late marks this month</p>
+          <p>${LATE_PENALTY.warningThreshold}+ late marks this month</p>
         </div>
         <div class="compliance-card-count ${repeatedLate.length > 0 ? 'warning' : 'success'}">${repeatedLate.length}</div>
       </div>
@@ -681,7 +681,7 @@ function renderWeeklySummary() {
 
 // ===== EXPORT FUNCTIONS =====
 function exportReportCSV() {
-  const WORK_DAYS = 26;
+  const WORK_DAYS = PAYROLL_SETTINGS.workDays || 26;
   const headers = ['Employee ID','Name','Department','Designation','Manager','Shift','Days Present','Hours Worked','Attendance %','Late Count','Basic','HRA','DA','Conveyance','Medical','Special Allowance','Gross Pay','PF','ESI','TDS','Prof Tax','Late Penalty','Total Deductions','Net Salary'];
   const rows = employees.map(emp => {
     const salary = computeSalary(emp);

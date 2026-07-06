@@ -16,6 +16,10 @@ function renderDashboard(container) {
     }
   });
 
+  const activeEmps = employees.filter(e => e.lifecycleStatus !== 'Terminated');
+  const totalHours = activeEmps.reduce((sum, emp) => sum + (monthData[emp.id]?.hours || 0), 0);
+  const avgHours = activeEmps.length > 0 ? (totalHours / activeEmps.length).toFixed(1) : '0.0';
+
   container.innerHTML = `
     <div class="view-header" style="justify-content: flex-start; gap: 16px;">
       <h2 style="font-size: 24px; font-weight: 700; color: var(--text);">Statistics</h2>
@@ -41,8 +45,8 @@ function renderDashboard(container) {
       </div>
       <div class="stat-card">
         <div class="stat-card-label">AVG HOURS / MONTH</div>
-        <div class="stat-card-value">47.0</div>
-        <div class="stat-card-sub">Across ${new Set(employees.map(e=>e.department)).size} departments</div>
+        <div class="stat-card-value">${avgHours}</div>
+        <div class="stat-card-sub">Across ${new Set(employees.map(e=>e.department).filter(d=>d&&d.trim()!=='')).size} departments</div>
       </div>
     </div>
 

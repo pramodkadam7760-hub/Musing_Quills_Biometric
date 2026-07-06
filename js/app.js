@@ -568,8 +568,9 @@ function computeSalary(emp) {
 
   // Leave/LOP calculations
   const history = attendanceHistory[emp.id] || [];
-  const absentDays = history.filter(r => r.status === 'Absent').length;
-  const halfDays = history.filter(r => r.status === 'Half Day').length;
+  const todayStr = getTodayDate();
+  const absentDays = history.filter(r => r.status === 'Absent' && r.date !== todayStr).length;
+  const halfDays = history.filter(r => r.status === 'Half Day' && r.date !== todayStr).length;
   const totalLeavesTaken = (emp.leavesTaken || 0) + absentDays + (halfDays * 0.5);
   const paidAllowance = getPaidLeaveAllowance(emp);
   let unpaidLeaveDeduction = 0;

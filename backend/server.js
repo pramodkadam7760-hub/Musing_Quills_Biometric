@@ -304,6 +304,15 @@ app.put('/api/employees/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   const emp = req.body;
   try {
+    // Preserve existing fingerprint_id if not provided in the request
+    let fpId = emp.fingerprintId;
+    if (fpId === undefined || fpId === null || fpId === '') {
+      const existing = await db.query('SELECT fingerprint_id FROM employees WHERE id = $1', [id]);
+      if (existing.rows.length > 0) {
+        fpId = existing.rows[0].fingerprint_id;
+      }
+    }
+
     await db.query(`
       UPDATE employees SET
         fingerprint_id = $1, first_name = $2, last_name = $3, email = $4, phone = $5,
@@ -314,7 +323,7 @@ app.put('/api/employees/:id', requireAdmin, async (req, res) => {
         payroll_start_date = $25, updated_at = CURRENT_TIMESTAMP
       WHERE id = $26
     `, [
-      emp.fingerprintId || null, emp.firstName, emp.lastName || '', emp.email, emp.phone || '',
+      fpId || null, emp.firstName, emp.lastName || '', emp.email, emp.phone || '',
       emp.dateOfBirth || null, emp.joiningDate, emp.designation || '', emp.department || '',
       emp.reportingManager || '', emp.shiftStart, emp.shiftEnd, emp.salaryType || 'monthly',
       emp.monthlyRate || 0, emp.hourlyRate || 0, emp.lifecycleStatus, emp.probationMonths || 6,
@@ -464,6 +473,36 @@ app.post('/api/hardware/log', async (req, res) => {
         delayMinutes = checkInMin - shiftStartMin;
         if (action.toUpperCase() === 'IN' && delayMinutes > 15) {
           isLate = true;
+        }
+      } else if (employee_name) {
+        // Self-healing: fingerprint link broken, try matching by name and auto-relink
+        const cleanName = employee_name.trim().toLowerCase();
+        const nameRes = await db.query(`
+          SELECT id, first_name, last_name, shift_start FROM employees 
+          WHERE LOWER(TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')))) = $1
+             OR LOWER(TRIM(COALESCE(first_name, ''))) = $2
+          LIMIT 1
+        `, [cleanName, cleanName]);
+        
+        if (nameRes.rows.length > 0) {
+          empId = nameRes.rows[0].id;
+          empName = `${nameRes.rows[0].first_name} ${nameRes.rows[0].last_name}`;
+          
+          // Auto-relink: restore the broken fingerprint_id
+          await db.query(`UPDATE employees SET fingerprint_id = $1, enrolled = true WHERE id = $2`, [fingerprint_id, empId]);
+          console.log(`[HARDWARE] Auto-relinked fingerprint #${fingerprint_id} → ${empId} (${empName})`);
+          
+          const shiftStartStr = nameRes.rows[0].shift_start ? nameRes.rows[0].shift_start.slice(0, 5) : '09:00';
+          const [shiftH, shiftM] = shiftStartStr.split(':').map(Number);
+          const now = new Date();
+          const checkInMin = now.getHours() * 60 + now.getMinutes();
+          const shiftStartMin = shiftH * 60 + shiftM;
+          delayMinutes = checkInMin - shiftStartMin;
+          if (action.toUpperCase() === 'IN' && delayMinutes > 15) {
+            isLate = true;
+          }
+        } else {
+          return res.status(404).json({ error: `No employee found with fingerprint ID: ${fingerprint_id} or name: ${employee_name}` });
         }
       } else {
         return res.status(404).json({ error: `No employee found with fingerprint ID: ${fingerprint_id}` });
@@ -631,8 +670,8 @@ app.post('/api/hardware/delete', async (req, res) => {
     // 3. Log the deletion in attendance_logs for audit
     await db.query(`
       INSERT INTO attendance_logs (employee_id, employee_name, action, device)
-      VALUES ($1, $2, $3, $4)
-    `, [empId, empName, 'DELETE', 'ESP32_READER_1']);
+      VALUES (NULL, $1, $2, $3)
+    `, [empName, 'DELETE', 'ESP32_READER_1']);
     
     console.log(`[HARDWARE] Deleted employee ${empName} (ID: ${empId}) via ESP32 deletion of slot #${fingerprint_id}`);
     res.json({ success: true, message: `Employee ${empName} successfully deleted from website database` });
@@ -1017,7 +1056,7 @@ app.get('/payslip/:id', async (req, res) => {
         status = 'Weekly Off';
       }
 
-      attendanceHistory.push({ status, hours });
+      attendanceHistory.push({ date: dateStr, status, hours });
     });
 
     const presentDays = attendanceHistory.filter(r => ['Present', 'Work From Home', 'Holiday'].includes(r.status)).length;
@@ -1028,8 +1067,9 @@ app.get('/payslip/:id', async (req, res) => {
     const md = { days, hours };
 
     const WORK_DAYS = 26;
-    const absentDays = attendanceHistory.filter(r => r.status === 'Absent').length;
-    const totalLeavesTaken = (empFormatted.leavesTaken || 0) + absentDays + (halfDays * 0.5);
+    const absentDays = attendanceHistory.filter(r => r.status === 'Absent' && r.date !== todayStr).length;
+    const halfDaysForLeaves = attendanceHistory.filter(r => r.status === 'Half Day' && r.date !== todayStr).length;
+    const totalLeavesTaken = (empFormatted.leavesTaken || 0) + absentDays + (halfDaysForLeaves * 0.5);
     
     const paidAllowance = 2.5; 
     const paidLeaves = Math.min(totalLeavesTaken, paidAllowance);
@@ -1290,7 +1330,7 @@ app.get('/payslip/:id', async (req, res) => {
 
 // START SERVER
 // ============================================================
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n====================================================`);
   console.log(`  QuantumCLK Backend v2.0.0`);
   console.log(`  Port: ${PORT}`);
