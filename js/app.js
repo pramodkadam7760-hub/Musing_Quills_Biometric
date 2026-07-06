@@ -149,8 +149,11 @@ try {
 
 
 function getPaidLeaveAllowance(emp) {
-  const base = LEAVE_SETTINGS.casualCount + LEAVE_SETTINGS.sickCount + LEAVE_SETTINGS.optionalCount;
-  const cf = LEAVE_SETTINGS.carryForward ? Math.min(emp.carriedForwardLeaves || 0, LEAVE_SETTINGS.carryForwardMax) : 0;
+  const base = parseFloat(LEAVE_SETTINGS.casualCount || 0) + 
+               parseFloat(LEAVE_SETTINGS.sickCount || 0) + 
+               parseFloat(LEAVE_SETTINGS.optionalCount || 0);
+  if (!emp) return base;
+  const cf = LEAVE_SETTINGS.carryForward ? Math.min(parseFloat(emp.carriedForwardLeaves || 0), parseFloat(LEAVE_SETTINGS.carryForwardMax || 0)) : 0;
   return base + cf;
 }
 

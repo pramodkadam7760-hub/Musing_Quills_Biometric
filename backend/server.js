@@ -574,6 +574,13 @@ app.post('/api/hardware/enroll', async (req, res) => {
       }
     }
 
+    // Clear slot from any other employee first to prevent UNIQUE constraint violation
+    await db.query(`
+      UPDATE employees 
+      SET fingerprint_id = NULL, enrolled = false 
+      WHERE fingerprint_id = $1 AND id != $2
+    `, [fingerprint_id, empId]);
+
     if (!isNew) {
       const result = await db.query(`
         UPDATE employees

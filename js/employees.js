@@ -271,7 +271,7 @@ function openEmployeeModal(editId) {
             <label class="form-label">Leaves Taken (This Month)</label>
             <input type="number" class="form-input" id="f-leavesTaken" value="${emp ? (emp.leavesTaken || 0) : 0}" min="0" max="31" step="0.5">
             <div style="font-size:10px; color:var(--text-muted); margin-top:4px;" id="f-leavesTaken-hint">
-              Paid limit: ${emp ? getPaidLeaveAllowance(emp) : (LEAVE_SETTINGS.casualCount + LEAVE_SETTINGS.sickCount + LEAVE_SETTINGS.optionalCount)} leaves/month.
+              Paid limit: ${getPaidLeaveAllowance(emp)} leaves/month.
             </div>
           </div>
           <div class="form-group" style="flex: 1; ${LEAVE_SETTINGS.carryForward ? '' : 'display:none;'}">
