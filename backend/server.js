@@ -442,19 +442,49 @@ app.post('/api/hardware/log', async (req, res) => {
 
   let empId = employee_id;
   let empName = employee_name;
+  let isLate = false;
+  let delayMinutes = 0;
 
   try {
     if (!empId && fingerprint_id) {
       const findRes = await db.query(`
-        SELECT id, first_name, last_name FROM employees 
+        SELECT id, first_name, last_name, shift_start FROM employees 
         WHERE fingerprint_id = $1 
         LIMIT 1
       `, [fingerprint_id]);
       if (findRes.rows.length > 0) {
         empId = findRes.rows[0].id;
         empName = `${findRes.rows[0].first_name} ${findRes.rows[0].last_name}`;
+        
+        const shiftStartStr = findRes.rows[0].shift_start ? findRes.rows[0].shift_start.slice(0, 5) : '09:00';
+        const [shiftH, shiftM] = shiftStartStr.split(':').map(Number);
+        const now = new Date();
+        const checkInMin = now.getHours() * 60 + now.getMinutes();
+        const shiftStartMin = shiftH * 60 + shiftM;
+        delayMinutes = checkInMin - shiftStartMin;
+        if (action.toUpperCase() === 'IN' && delayMinutes > 15) {
+          isLate = true;
+        }
       } else {
         return res.status(404).json({ error: `No employee found with fingerprint ID: ${fingerprint_id}` });
+      }
+    } else if (empId) {
+      const findRes = await db.query(`
+        SELECT first_name, last_name, shift_start FROM employees 
+        WHERE id = $1 
+        LIMIT 1
+      `, [empId]);
+      if (findRes.rows.length > 0) {
+        empName = `${findRes.rows[0].first_name} ${findRes.rows[0].last_name}`;
+        const shiftStartStr = findRes.rows[0].shift_start ? findRes.rows[0].shift_start.slice(0, 5) : '09:00';
+        const [shiftH, shiftM] = shiftStartStr.split(':').map(Number);
+        const now = new Date();
+        const checkInMin = now.getHours() * 60 + now.getMinutes();
+        const shiftStartMin = shiftH * 60 + shiftM;
+        delayMinutes = checkInMin - shiftStartMin;
+        if (action.toUpperCase() === 'IN' && delayMinutes > 15) {
+          isLate = true;
+        }
       }
     }
 
@@ -463,8 +493,13 @@ app.post('/api/hardware/log', async (req, res) => {
       VALUES ($1, $2, $3, $4)
     `, [empId, empName || 'UNKNOWN', action.toUpperCase(), device || 'GATE_1']);
 
-    console.log(`[HARDWARE] ${action.toUpperCase()} logged for ${empId} via ${device || 'GATE_1'}`);
-    res.status(201).json({ success: true, message: 'Attendance log recorded' });
+    console.log(`[HARDWARE] ${action.toUpperCase()} logged for ${empId} via ${device || 'GATE_1'} (Late: ${isLate}, Delay: ${delayMinutes} mins)`);
+    res.status(201).json({ 
+      success: true, 
+      message: isLate ? 'Attendance logged (LATE)' : 'Attendance log recorded',
+      late: isLate,
+      delay: delayMinutes
+    });
   } catch (err) {
     console.error('[HARDWARE] Log error:', err.message);
     res.status(500).json({ error: err.message });

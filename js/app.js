@@ -80,6 +80,7 @@ let monthData = {};
 let attendanceHistory = {}; // per-employee daily records
 let scanLog = [];
 let nextIdNum = 1030;
+let maxLogIdSeen = 0;
 
 let selectedPayrollMonth = new Date().getMonth();
 let selectedPayrollYear = new Date().getFullYear();
@@ -416,6 +417,9 @@ async function loadAllData() {
     }
     
     const logs = await apiFetch(`${API_BASE_URL}/attendance`);
+    if (logs && logs.length > 0) {
+      maxLogIdSeen = Math.max(...logs.map(l => l.id || 0));
+    }
     try {
       holidaysList = await apiFetch(`${API_BASE_URL}/holidays`);
     } catch (hErr) {
@@ -1124,6 +1128,48 @@ window.addEventListener('load', function() {
       try {
         const logs = await apiFetch(`${API_BASE_URL}/attendance`);
         
+        // Process any new logs for late notifications
+        if (logs && logs.length > 0) {
+          const newLogs = logs.filter(l => l.id > maxLogIdSeen);
+          if (newLogs.length > 0) {
+            newLogs.forEach(log => {
+              maxLogIdSeen = Math.max(maxLogIdSeen, log.id);
+              if (log.action && log.action.toUpperCase() === 'IN') {
+                const emp = employees.find(e => e.id === log.employee_id);
+                if (emp) {
+                  const [shiftH, shiftM] = emp.shiftStart.split(':').map(Number);
+                  const shiftStartMin = shiftH * 60 + shiftM;
+                  const inDate = new Date(log.timestamp);
+                  const arrivalMin = inDate.getHours() * 60 + inDate.getMinutes();
+                  const delayMin = arrivalMin - shiftStartMin;
+                  
+                  if (delayMin > LATE_PENALTY.graceMinutes) {
+                    showToast(`⚠ LATE ARRIVAL: ${emp.firstName} ${emp.lastName} is ${delayMin} minutes late!`, 'late');
+                    
+                    addNotification(
+                      `Late Arrival — ${emp.firstName} ${emp.lastName}`,
+                      `Arrived ${delayMin} min late. Shift: ${format24to12(emp.shiftStart)}, Arrived: ${formatTimeShort(inDate)}`,
+                      'late',
+                      emp.id
+                    );
+                    
+                    const lateCount = getLateCount(emp.id);
+                    if (lateCount >= LATE_PENALTY.warningThreshold) {
+                      const penalty = getLatePenaltyAmount(emp.id, emp.monthlyRate || emp.hourlyRate * 200);
+                      addNotification(
+                        `⚠ Habitual Latecomer — ${emp.firstName} ${emp.lastName}`,
+                        `${lateCount} late marks this month. Salary penalty: ₹${penalty.toLocaleString('en-IN')} will be deducted.`,
+                        'habitual',
+                        emp.id
+                      );
+                    }
+                  }
+                }
+              }
+            });
+          }
+        }
+
         // Skip compile and rendering if logs have not changed
         const currentLogsSerialized = JSON.stringify(logs);
         if (lastLogsSerialized !== null && lastLogsSerialized === currentLogsSerialized) {
