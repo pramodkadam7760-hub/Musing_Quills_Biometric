@@ -523,8 +523,8 @@ app.post('/api/hardware/enroll', async (req, res) => {
       const cleanName = employee_name.trim().toLowerCase();
       const findRes = await db.query(`
         SELECT id FROM employees 
-        WHERE LOWER(TRIM(CONCAT(first_name, ' ', last_name))) = $1 
-           OR LOWER(TRIM(first_name)) = $2
+        WHERE LOWER(TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')))) = $1 
+           OR LOWER(TRIM(COALESCE(first_name, ''))) = $2
         LIMIT 1
       `, [cleanName, cleanName]);
 
