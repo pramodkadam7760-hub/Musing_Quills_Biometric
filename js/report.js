@@ -222,7 +222,10 @@ function renderDailyAttendance() {
   const allRecords = [];
   filteredEmps.forEach(emp => {
     getFilteredHistory(emp.id).forEach(rec => {
-      allRecords.push({ emp, ...rec });
+      // Only include dates where the employee actually had logs, worked, or was on leave to avoid listing everyone as absent
+      if (['Present', 'Work From Home', 'Half Day', 'Leave'].includes(rec.status) || rec.login || rec.logout) {
+        allRecords.push({ emp, ...rec });
+      }
     });
   });
   // Show working days grouped by date, sorted newest first
