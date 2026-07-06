@@ -592,7 +592,7 @@ app.post('/api/hardware/enroll', async (req, res) => {
         const firstName = nameParts[0] || 'Unknown';
         const lastName = nameParts.slice(1).join(' ') || '';
         
-        const placeholderEmail = `setup-${nextNum}@quantumclk.io`;
+        const placeholderEmail = `setup-${nextNum}@cubiccode.io`;
         const tzOffset = new Date().getTimezoneOffset() * 60000;
         const todayDate = new Date(Date.now() - tzOffset).toISOString().split('T')[0];
 

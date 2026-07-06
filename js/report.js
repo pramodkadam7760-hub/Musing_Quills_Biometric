@@ -625,20 +625,42 @@ function renderWeeklySummary() {
   let totalPresent = 0, totalAbsent = 0, totalOnLeave = 0, totalLate = 0, totalOT = 0;
   const todayStr = getTodayStr();
 
-  filteredEmps.forEach(emp => {
+  const empWeeklyData = filteredEmps.map(emp => {
     const history = attendanceHistory[emp.id] || [];
     // Last 7 calendar days
     const last7 = history.slice(-7);
-    totalPresent += last7.filter(r => ['Present', 'Work From Home'].includes(r.status)).length;
-    totalAbsent += last7.filter(r => r.status === 'Absent').length;
-    totalOnLeave += last7.filter(r => r.status === 'Leave').length;
-    totalLate += last7.filter(r => r.delay > 0).length;
+    const present = last7.filter(r => ['Present', 'Work From Home'].includes(r.status)).length;
+    const absent = last7.filter(r => r.status === 'Absent').length;
+    const leave = last7.filter(r => r.status === 'Leave').length;
+    const halfDay = last7.filter(r => r.status === 'Half Day').length;
+    const late = last7.filter(r => r.delay > 0).length;
     const hrs = last7.reduce((s, r) => s + (r.hours || 0), 0);
     const expected = last7.filter(r => ['Present', 'Work From Home', 'Half Day'].includes(r.status)).length * getExpectedHours(emp);
-    totalOT += Math.max(0, hrs - expected);
+    const ot = Math.max(0, hrs - expected);
+
+    totalPresent += present;
+    totalAbsent += absent;
+    totalOnLeave += leave;
+    totalLate += late;
+    totalOT += ot;
+
+    return { emp, present, absent, leave, halfDay, late, ot: Math.round(ot * 100) / 100 };
   });
 
   const attPct = totalEmp > 0 ? Math.round((totalPresent / (totalEmp * 5)) * 100) : 0; // assume 5 work days in week
+
+  const tableBody = empWeeklyData.map(d => `
+    <tr>
+      <td class="fw-600">${d.emp.firstName} ${d.emp.lastName}</td>
+      <td><span class="chip ${getDeptClass(d.emp.department)}" style="font-size:10px;padding:2px 8px">${d.emp.department}</span></td>
+      <td><span class="chip success">${d.present}</span></td>
+      <td>${d.absent > 0 ? `<span class="chip danger">${d.absent}</span>` : '<span class="text-muted">0</span>'}</td>
+      <td>${d.leave > 0 ? `<span class="chip info">${d.leave}</span>` : '<span class="text-muted">0</span>'}</td>
+      <td>${d.halfDay > 0 ? `<span class="chip warning">${d.halfDay}</span>` : '<span class="text-muted">0</span>'}</td>
+      <td>${d.late > 0 ? `<span class="chip warning">${d.late}</span>` : '<span class="text-muted">0</span>'}</td>
+      <td>${d.ot > 0 ? `<span class="mono text-success fw-600">+${d.ot}h</span>` : '<span class="text-muted">—</span>'}</td>
+    </tr>
+  `).join('');
 
   return `
     <div class="weekly-summary-card">
@@ -678,6 +700,31 @@ function renderWeeklySummary() {
           <div class="weekly-metric-icon" style="background:rgba(20,184,166,0.12);color:#14b8a6"><i class="ti ti-clock-plus"></i></div>
           <div class="weekly-metric-info"><span class="weekly-metric-label">Overtime Hours</span><span class="weekly-metric-value">${Math.round(totalOT)}h</span></div>
         </div>
+      </div>
+    </div>
+
+    <div class="table-panel" style="margin-top: 24px;">
+      <div class="table-panel-header">
+        <span class="table-panel-title"><i class="ti ti-users" style="margin-right:6px;color:var(--primary)"></i>Employee Weekly Performance Summary</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Department</th>
+              <th>Present Days</th>
+              <th>Absent Days</th>
+              <th>On Leave</th>
+              <th>Half Days</th>
+              <th>Late Marks</th>
+              <th>Overtime Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableBody || '<tr><td colspan="8"><div class="empty-state"><h4>No data found</h4></div></td></tr>'}
+          </tbody>
+        </table>
       </div>
     </div>`;
 }
