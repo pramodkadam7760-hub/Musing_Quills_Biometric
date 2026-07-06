@@ -70,6 +70,14 @@ const initializeDb = async () => {
       )
     `);
 
+    // Ensure leaves_taken column is DECIMAL(5,2) (handles case where table existed with INT)
+    try {
+      await pool.query('ALTER TABLE employees MODIFY COLUMN leaves_taken DECIMAL(5, 2) DEFAULT 0.00');
+      console.log('[DB] Verified employees.leaves_taken column is DECIMAL(5,2).');
+    } catch (colErr) {
+      console.warn('[DB] Could not alter employees.leaves_taken column:', colErr.message);
+    }
+
     // 2. Attendance Logs Table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS attendance_logs (
