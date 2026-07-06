@@ -13,9 +13,9 @@ echo "Ensure you run this script as root/sudo."
 echo -e "\n[1/7] Updating package manager..."
 sudo apt update -y
 
-# 2. Install Node.js, Git, Nginx, PostgreSQL and SQLite
-echo -e "\n[2/7] Installing Node.js, Nginx, PostgreSQL, SQLite3 and dependencies..."
-sudo apt install -y curl git nginx sqlite3 postgresql postgresql-contrib
+# 2. Install Node.js, Git, Nginx, MySQL and SQLite
+echo -e "\n[2/7] Installing Node.js, Nginx, MySQL, SQLite3 and dependencies..."
+sudo apt install -y curl git nginx sqlite3 mysql-server
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs
 
@@ -27,10 +27,11 @@ sudo npm install -g pm2
 echo -e "\n[4/7] Installing backend NPM packages..."
 npm install
 
-# 5. Setup PostgreSQL Database
-echo -e "\n[5/7] Setting up PostgreSQL database..."
-sudo -u postgres psql -c "CREATE DATABASE attendance_system;" 2>/dev/null || echo "Database already exists."
-sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';" 2>/dev/null || true
+# 5. Setup MySQL Database
+echo -e "\n[5/7] Setting up MySQL database..."
+sudo mysql -e "CREATE DATABASE IF NOT EXISTS attendance_system;" 2>/dev/null || echo "Database already exists."
+sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '';" || true
+sudo mysql -e "FLUSH PRIVILEGES;"
 
 # 6. Configure Nginx Reverse Proxy
 echo -e "\n[6/7] Writing Nginx proxy configuration..."
