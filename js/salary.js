@@ -323,7 +323,7 @@ function sendPayslipWhatsApp(empId) {
                `• Days Present: ${s.daysPresent} / 26\n` +
                `• Leaves Taken: ${s.leavesTaken}\n\n` +
                `*View / Download Official PDF Payslip:*\n` +
-               `${window.location.origin}/payslip/${emp.id}\n\n` +
+               `${API_BASE_URL.replace(/\/api$/, '')}/payslip/${emp.id}\n\n` +
                `_This is a computer-generated payslip notification._`;
 
   let phone = emp.phone ? emp.phone.replace(/[^0-9]/g, '') : '';
