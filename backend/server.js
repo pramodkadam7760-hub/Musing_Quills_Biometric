@@ -26,6 +26,17 @@ const formatLocalDate = (d) => {
 // MIDDLEWARE
 // ============================================================
 
+// Path rewrite middleware for subfolder deployments (e.g. /attendance)
+app.use((req, res, next) => {
+  if (req.url.startsWith('/attendance')) {
+    req.url = req.url.substring('/attendance'.length);
+    if (!req.url.startsWith('/')) {
+      req.url = '/' + req.url;
+    }
+  }
+  next();
+});
+
 // CORS — allow dashboard origin
 app.use(cors({
   origin: true,
