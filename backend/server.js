@@ -1003,6 +1003,7 @@ app.get('/payslip/:id', async (req, res) => {
       datesList.push({ dateStr, dayOfWeek: d.getDay() });
     }
 
+    const todayStr = formatLocalDate(new Date());
     const attendanceHistory = [];
     datesList.forEach(({ dateStr, dayOfWeek }) => {
       const cutoffDate = empFormatted.payrollStartDate || empFormatted.joiningDate;
@@ -1031,7 +1032,6 @@ app.get('/payslip/:id', async (req, res) => {
       });
 
       const hasJoined = !empFormatted.joiningDate || (dateStr >= empFormatted.joiningDate);
-      const todayStr = formatLocalDate(new Date());
       const hasOccurred = dateStr <= todayStr;
       let status = (hasJoined && hasOccurred) ? 'Absent' : '—';
       let hours = 0;
