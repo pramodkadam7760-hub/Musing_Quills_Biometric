@@ -10,6 +10,29 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const db = require('./db');
 
+const settingsPath = path.join(__dirname, 'leave_settings.json');
+let LEAVE_SETTINGS = {
+  casualCount: 1.0,
+  sickCount: 1.0,
+  optionalCount: 0.5,
+  lopRule: 'pro-rata',
+  halfDayRule: 0.5,
+  monthlyLimit: 3.0,
+  carryForward: false,
+  carryForwardMax: 5
+};
+
+try {
+  if (fs.existsSync(settingsPath)) {
+    LEAVE_SETTINGS = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  } else {
+    fs.writeFileSync(settingsPath, JSON.stringify(LEAVE_SETTINGS, null, 2), 'utf8');
+  }
+} catch (err) {
+  console.error('[SETTINGS] Error loading/creating settings file:', err.message);
+}
+
+
 const app = express();
 const PORT = process.env.PORT || 5001;
 const startTime = Date.now();
@@ -207,6 +230,28 @@ app.post('/api/auth/change-password', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('[AUTH] Password change error:', err.message);
     res.status(500).json({ error: 'Failed to change password' });
+  }
+});
+
+// ============================================================
+// SYSTEM SETTINGS
+// ============================================================
+
+// GET: Fetch Leave Settings
+app.get('/api/settings/leave', requireAdmin, (req, res) => {
+  res.json(LEAVE_SETTINGS);
+});
+
+// POST: Update Leave Settings
+app.post('/api/settings/leave', requireAdmin, (req, res) => {
+  try {
+    LEAVE_SETTINGS = { ...LEAVE_SETTINGS, ...req.body };
+    fs.writeFileSync(settingsPath, JSON.stringify(LEAVE_SETTINGS, null, 2), 'utf8');
+    console.log('[SETTINGS] Updated leave settings saved to file.');
+    res.json({ success: true, settings: LEAVE_SETTINGS });
+  } catch (err) {
+    console.error('[SETTINGS] Save error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -1083,7 +1128,7 @@ app.get('/payslip/:id', async (req, res) => {
     const halfDaysForLeaves = attendanceHistory.filter(r => r.status === 'Half Day' && r.date !== todayStr).length;
     const totalLeavesTaken = (empFormatted.leavesTaken || 0) + absentDays + (halfDaysForLeaves * 0.5);
     
-    const paidAllowance = 2.5; 
+    const paidAllowance = parseFloat(LEAVE_SETTINGS.monthlyLimit || 2.5); 
     const paidLeaves = Math.min(totalLeavesTaken, paidAllowance);
     const paidDays = Math.min(WORK_DAYS, md.days + paidLeaves);
     

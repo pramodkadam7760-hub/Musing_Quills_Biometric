@@ -335,8 +335,17 @@ function saveLeaveSettings(event) {
     halfDayRule,
     carryForward
   };
-
   localStorage.setItem('LEAVE_SETTINGS', JSON.stringify(LEAVE_SETTINGS));
+
+  // Sync to backend server
+  apiFetch(`${API_BASE_URL}/settings/leave`, {
+    method: 'POST',
+    body: LEAVE_SETTINGS
+  }).then(res => {
+    console.log('[SETTINGS] Leave settings synced to server successfully');
+  }).catch(err => {
+    console.error('[SETTINGS] Failed to sync settings to server:', err);
+  });
 
   // Re-calculate attendance days for all employees since half-day rules might have changed
   employees.forEach(emp => {

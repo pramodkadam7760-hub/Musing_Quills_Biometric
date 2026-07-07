@@ -151,9 +151,7 @@ try {
 
 
 function getPaidLeaveAllowance(emp) {
-  const base = parseFloat(LEAVE_SETTINGS.casualCount || 0) + 
-               parseFloat(LEAVE_SETTINGS.sickCount || 0) + 
-               parseFloat(LEAVE_SETTINGS.optionalCount || 0);
+  const base = parseFloat(LEAVE_SETTINGS.monthlyLimit || 0);
   if (!emp) return base;
   const cf = LEAVE_SETTINGS.carryForward ? Math.min(parseFloat(emp.carriedForwardLeaves || 0), parseFloat(LEAVE_SETTINGS.carryForwardMax || 0)) : 0;
   return base + cf;
@@ -402,6 +400,14 @@ function initAttendanceData() {
 
 async function loadAllData() {
   try {
+    try {
+      const liveSettings = await apiFetch(`${API_BASE_URL}/settings/leave`);
+      LEAVE_SETTINGS = { ...LEAVE_SETTINGS, ...liveSettings };
+      localStorage.setItem('LEAVE_SETTINGS', JSON.stringify(LEAVE_SETTINGS));
+    } catch (e) {
+      console.warn('Could not sync LEAVE_SETTINGS from server, using local:', e);
+    }
+
     const empData = await apiFetch(`${API_BASE_URL}/employees`);
     employees = empData;
     
