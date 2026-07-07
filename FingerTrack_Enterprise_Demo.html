@@ -2734,8 +2734,10 @@ const API_BASE_URL = (function() {
   if (proto === 'file:' || !h || h === 'localhost' || h === '127.0.0.1') {
     return 'http://localhost:5001/api';
   }
-  // In production, use the same origin
-  return window.location.origin + '/api';
+  // In production, support both main domain subfolder and subdomain deployment
+  const path = window.location.pathname;
+  const basePath = path.includes('/attendance') ? '/attendance' : '';
+  return window.location.origin + basePath + '/api';
 })();
 
 async function apiFetch(url, options = {}) {
