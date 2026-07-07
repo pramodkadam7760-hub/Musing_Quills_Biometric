@@ -1,3 +1,4 @@
+process.env.TZ = 'Asia/Kolkata';
 const mysql = require('mysql2/promise');
 const path = require('path');
 const fs = require('fs');
@@ -15,6 +16,11 @@ const pool = mysql.createPool({
   queueLimit: 0,
   // Return dates as strings, not JS Date objects (matches PG behavior)
   dateStrings: true
+});
+
+// Force Asia/Kolkata (IST) timezone on all database connection sessions
+pool.on('connection', (connection) => {
+  connection.query("SET time_zone = '+05:30';");
 });
 
 // Compatibility shim: wraps mysql2 results to look like pg's { rows, rowCount }
