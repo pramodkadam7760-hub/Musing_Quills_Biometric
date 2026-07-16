@@ -26,7 +26,7 @@ const AVATAR_COLORS = [
 let employees = [];
 
 // ---- API Configuration ----
-const API_BASE_URL = (function() {
+const API_BASE_URL = (function () {
   const h = window.location.hostname;
   const proto = window.location.protocol;
   // If opened via file:// or localhost, always point to the local backend
@@ -48,7 +48,7 @@ async function apiFetch(url, options = {}) {
     };
     options.body = JSON.stringify(options.body);
   }
-  
+
   let response;
   try {
     console.log(`[apiFetch] Requesting: ${options.method || 'GET'} ${url}`);
@@ -171,22 +171,22 @@ function compileAttendanceData(logs) {
   attendanceHistory = {};
   scanLog = [];
   todayAtt = {};
-  
+
   // Sort logs chronologically (oldest first)
   const sortedLogs = [...logs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-  
+
   // Group logs by employee and date
   const grouped = {};
   const todayStr = getTodayDate();
-  
+
   for (const log of sortedLogs) {
     const timestamp = new Date(log.timestamp);
-    const dateStr = timestamp.getFullYear() + '-' + 
-                    String(timestamp.getMonth() + 1).padStart(2, '0') + '-' + 
-                    String(timestamp.getDate()).padStart(2, '0');
-    const timeStr = String(timestamp.getHours()).padStart(2, '0') + ':' + 
-                    String(timestamp.getMinutes()).padStart(2, '0');
-    
+    const dateStr = timestamp.getFullYear() + '-' +
+      String(timestamp.getMonth() + 1).padStart(2, '0') + '-' +
+      String(timestamp.getDate()).padStart(2, '0');
+    const timeStr = String(timestamp.getHours()).padStart(2, '0') + ':' +
+      String(timestamp.getMinutes()).padStart(2, '0');
+
     const clearedTimeStr = localStorage.getItem('SCAN_LOG_CLEARED_TIME');
     const clearedTime = clearedTimeStr ? new Date(clearedTimeStr) : null;
     if (!clearedTime || timestamp > clearedTime) {
@@ -251,9 +251,9 @@ function compileAttendanceData(logs) {
   const datesList = [];
   const daysInMonth = new Date(selectedPayrollYear, selectedPayrollMonth + 1, 0).getDate();
   for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = selectedPayrollYear + '-' + 
-                    String(selectedPayrollMonth + 1).padStart(2, '0') + '-' + 
-                    String(d).padStart(2, '0');
+    const dateStr = selectedPayrollYear + '-' +
+      String(selectedPayrollMonth + 1).padStart(2, '0') + '-' +
+      String(d).padStart(2, '0');
     const dayOfWeek = new Date(selectedPayrollYear, selectedPayrollMonth, d).getDay();
     datesList.push({ dateStr, dayOfWeek });
   }
@@ -261,7 +261,7 @@ function compileAttendanceData(logs) {
   employees.forEach(emp => {
     attendanceHistory[emp.id] = [];
     const empLogs = grouped[emp.id] || {};
-    
+
     datesList.forEach(({ dateStr, dayOfWeek }) => {
       // 1. If date is before joining date, always skip.
       if (emp.joiningDate && dateStr < emp.joiningDate) {
@@ -279,12 +279,12 @@ function compileAttendanceData(logs) {
         }
       }
       const dayLogs = empLogs[dateStr];
-      
+
       let login = null;
       let logout = null;
       let checkInLog = null;
       let checkOutLog = null;
-      
+
       if (dayLogs) {
         const inLogs = dayLogs.filter(l => l.action === 'IN');
         const outLogs = dayLogs.filter(l => l.action === 'OUT');
@@ -293,7 +293,7 @@ function compileAttendanceData(logs) {
         login = checkInLog ? checkInLog.timeStr : null;
         logout = checkOutLog ? checkOutLog.timeStr : null;
       }
-      
+
       let delay = 0;
       let earlyExit = 0;
       let hours = 0;
@@ -301,18 +301,18 @@ function compileAttendanceData(logs) {
       const hasJoined = !emp.joiningDate || (dateStr >= emp.joiningDate);
       const hasOccurred = dateStr <= todayStr;
       let status = (hasJoined && hasOccurred) ? 'Absent' : '—';
-      
+
       const shiftH = parseInt(emp.shiftStart.split(':')[0]);
       const shiftM = parseInt(emp.shiftStart.split(':')[1]);
       const endH = parseInt(emp.shiftEnd.split(':')[0]);
       const endM = parseInt(emp.shiftEnd.split(':')[1]);
-      
+
       // Check if dateStr matches a configured holiday
       const isHoliday = holidaysList.some(h => {
         const hDate = new Date(h.holiday_date);
-        const hDateStr = hDate.getFullYear() + '-' + 
-                         String(hDate.getMonth() + 1).padStart(2, '0') + '-' + 
-                         String(hDate.getDate()).padStart(2, '0');
+        const hDateStr = hDate.getFullYear() + '-' +
+          String(hDate.getMonth() + 1).padStart(2, '0') + '-' +
+          String(hDate.getDate()).padStart(2, '0');
         return hDateStr === dateStr;
       });
 
@@ -325,7 +325,7 @@ function compileAttendanceData(logs) {
         const [loutH, loutM] = logout.split(':').map(Number);
         const loginMin = linH * 60 + linM;
         const logoutMin = loutH * 60 + loutM;
-        
+
         delay = status === 'Work From Home' ? 0 : Math.max(0, loginMin - (shiftH * 60 + shiftM));
         if (isSaturday) {
           const satEndMin = (shiftH * 60 + shiftM) + 240; // 4 hours shift
@@ -334,7 +334,7 @@ function compileAttendanceData(logs) {
           earlyExit = Math.max(0, (endH * 60 + endM) - logoutMin);
         }
         hours = Math.round(((logoutMin - loginMin) / 60) * 100) / 100;
-        
+
         if (hours < halfDayThreshold && status !== 'Work From Home') {
           status = 'Half Day';
         }
@@ -342,7 +342,7 @@ function compileAttendanceData(logs) {
         status = (checkInLog && checkInLog.device === 'WFH_DASHBOARD') ? 'Work From Home' : 'Present';
         const [linH, linM] = login.split(':').map(Number);
         delay = status === 'Work From Home' ? 0 : Math.max(0, (linH * 60 + linM) - (shiftH * 60 + shiftM));
-        
+
         if (dateStr === todayStr) {
           hours = 0.0;
         } else {
@@ -362,7 +362,7 @@ function compileAttendanceData(logs) {
       } else if (dayOfWeek === 0 && hasJoined && hasOccurred) {
         status = 'Weekly Off';
       }
-      
+
       const record = {
         date: dateStr,
         login,
@@ -374,7 +374,7 @@ function compileAttendanceData(logs) {
         leaveType: null,
         missedPunch: (login && !logout) ? 'logout' : (!login && logout) ? 'login' : null
       };
-      
+
       attendanceHistory[emp.id].push(record);
     });
   });
@@ -410,7 +410,7 @@ async function loadAllData() {
 
     const empData = await apiFetch(`${API_BASE_URL}/employees`);
     employees = empData;
-    
+
     if (employees && employees.length > 0) {
       let maxNum = 1030;
       employees.forEach(emp => {
@@ -426,7 +426,7 @@ async function loadAllData() {
       });
       nextIdNum = maxNum;
     }
-    
+
     const logs = await apiFetch(`${API_BASE_URL}/attendance`);
     if (logs && logs.length > 0) {
       maxLogIdSeen = Math.max(...logs.map(l => l.id || 0));
@@ -603,7 +603,7 @@ function computeSalary(emp) {
     const paidLeaves = md.days > 0 ? Math.min(totalLeavesTaken, paidAllowance) : 0;
     const paidDays = Math.min(WORK_DAYS, md.days + paidLeaves);
     basicPay = Math.round((emp.monthlyRate / WORK_DAYS) * paidDays);
-    
+
     if (PAYROLL_SETTINGS.monthlyOtEnabled) {
       const hourlyRate = emp.monthlyRate / (WORK_DAYS * 8);
       const otHours = md.otHours || 0;
@@ -621,7 +621,7 @@ function computeSalary(emp) {
 
   // === DEDUCTIONS ===
   const latePenalty = getLatePenaltyAmount(emp.id, basicPay);
-  
+
   // Since LOP is already reflected in basicPay, totalDeductions is just latePenalty
   const totalDeductions = latePenalty;
   const netSalary = Math.max(0, totalEarnings - totalDeductions);
@@ -704,7 +704,7 @@ function generateAnniversaryAndBirthdayReminders() {
   const today = new Date();
   const todayMonth = today.getMonth(); // 0-indexed
   const todayDate = today.getDate();
-  
+
   const tomorrow = new Date();
   tomorrow.setDate(today.getDate() + 1);
   const tomorrowMonth = tomorrow.getMonth();
@@ -720,7 +720,7 @@ function generateAnniversaryAndBirthdayReminders() {
 
       if (dobMonth === todayMonth && dobDate === todayDate) {
         // Birthday is today!
-        const notifExists = notifications.some(n => 
+        const notifExists = notifications.some(n =>
           n.empId === emp.id && n.title.includes('Birthday Today')
         );
         if (!notifExists) {
@@ -733,7 +733,7 @@ function generateAnniversaryAndBirthdayReminders() {
         }
       } else if (dobMonth === tomorrowMonth && dobDate === tomorrowDate) {
         // Birthday is tomorrow!
-        const notifExists = notifications.some(n => 
+        const notifExists = notifications.some(n =>
           n.empId === emp.id && n.title.includes('Upcoming Birthday')
         );
         if (!notifExists) {
@@ -757,7 +757,7 @@ function generateAnniversaryAndBirthdayReminders() {
       if (yearsCompleted > 0) {
         if (joinMonth === todayMonth && joinDate === todayDate) {
           // Anniversary today!
-          const notifExists = notifications.some(n => 
+          const notifExists = notifications.some(n =>
             n.empId === emp.id && n.title.includes('Anniversary Today')
           );
           if (!notifExists) {
@@ -770,7 +770,7 @@ function generateAnniversaryAndBirthdayReminders() {
           }
         } else if (joinMonth === tomorrowMonth && joinDate === tomorrowDate) {
           // Anniversary tomorrow!
-          const notifExists = notifications.some(n => 
+          const notifExists = notifications.some(n =>
             n.empId === emp.id && n.title.includes('Anniversary Tomorrow')
           );
           if (!notifExists) {
@@ -801,7 +801,7 @@ function generateProbationReminders() {
 
       if (diffDays < 0) {
         const title = `⚠️ Probation Expired — ${emp.firstName} ${emp.lastName}`;
-        const notifExists = notifications.some(n => 
+        const notifExists = notifications.some(n =>
           n.empId === emp.id && n.title.includes('Probation Expired')
         );
         if (!notifExists) {
@@ -814,7 +814,7 @@ function generateProbationReminders() {
         }
       } else if (diffDays <= 7) {
         const title = `⚠️ Probation Ending Soon — ${emp.firstName} ${emp.lastName}`;
-        const notifExists = notifications.some(n => 
+        const notifExists = notifications.some(n =>
           n.empId === emp.id && n.title.includes('Probation Ending Soon')
         );
         if (!notifExists) {
@@ -940,13 +940,13 @@ function navigateTo(view) {
   const app = document.getElementById('app');
   if (!app) return;
   const info = VIEW_TITLES[view] || VIEW_TITLES.dashboard;
-  
+
   const topbarTitle = document.getElementById('topbar-title');
   if (topbarTitle) topbarTitle.textContent = info.title;
-  
+
   const topbarBreadcrumb = document.getElementById('topbar-breadcrumb');
   if (topbarBreadcrumb) topbarBreadcrumb.textContent = info.breadcrumb;
-  
+
   document.querySelectorAll('.nav-item').forEach(item => {
     item.classList.toggle('active', item.dataset.view === view);
   });
@@ -995,7 +995,7 @@ async function initAuth() {
     btn.onclick = async () => {
       const loginId = document.getElementById('login-id').value.trim();
       const password = document.getElementById('login-password').value.trim();
-      
+
       if (!loginId || !password) {
         alert('Please enter both Login ID and Password.');
         return;
@@ -1089,7 +1089,7 @@ function applyRBAC() {
 
   // Hide Scanner (only for Reception/Admin in real life, but for demo keep it everywhere except employee)
   if (isEmployee) document.querySelector('[data-view="scanner"]')?.closest('li')?.remove();
-  
+
   // Hide Employee Registry & Payroll for simple employees
   if (isEmployee || isManager) {
     document.querySelector('[data-view="salary"]')?.closest('li')?.remove();
@@ -1100,7 +1100,7 @@ function applyRBAC() {
 }
 
 // ---- Init ----
-window.addEventListener('load', function() {
+window.addEventListener('load', function () {
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', (e) => {
       e.preventDefault();
@@ -1108,20 +1108,20 @@ window.addEventListener('load', function() {
     });
   });
   window.addEventListener('hashchange', handleRoute);
-  
+
   generateAnniversaryAndBirthdayReminders();
   generateProbationReminders();
   updateNotificationBadge();
 
   // Close dropdowns on click outside
-  document.addEventListener('click', function(e) {
+  document.addEventListener('click', function (e) {
     // Notification dropdown
     const notifDropdown = document.getElementById('notif-dropdown');
     const notifWrapper = e.target.closest('.notif-wrapper');
     if (notifDropdown && notifDropdown.classList.contains('open') && !notifWrapper) {
       notifDropdown.classList.remove('open');
     }
-    
+
     // Profile dropdown
     const profileMenu = document.getElementById('profile-menu');
     const profileWrapper = e.target.closest('.user-profile');
@@ -1139,7 +1139,7 @@ window.addEventListener('load', function() {
     if (typeof currentUser !== 'undefined' && currentUser) {
       try {
         const logs = await apiFetch(`${API_BASE_URL}/attendance`);
-        
+
         // Process any new logs for late notifications
         if (logs && logs.length > 0) {
           const newLogs = logs.filter(l => l.id > maxLogIdSeen);
@@ -1154,17 +1154,17 @@ window.addEventListener('load', function() {
                   const inDate = new Date(log.timestamp);
                   const arrivalMin = inDate.getHours() * 60 + inDate.getMinutes();
                   const delayMin = arrivalMin - shiftStartMin;
-                  
+
                   if (delayMin > LATE_PENALTY.graceMinutes) {
                     showToast(`⚠ LATE ARRIVAL: ${emp.firstName} ${emp.lastName} is ${delayMin} minutes late!`, 'late');
-                    
+
                     addNotification(
                       `Late Arrival — ${emp.firstName} ${emp.lastName}`,
                       `Arrived ${delayMin} min late. Shift: ${format24to12(emp.shiftStart)}, Arrived: ${formatTimeShort(inDate)}`,
                       'late',
                       emp.id
                     );
-                    
+
                     const lateCount = getLateCount(emp.id);
                     if (lateCount >= LATE_PENALTY.warningThreshold) {
                       const penalty = getLatePenaltyAmount(emp.id, emp.monthlyRate || emp.hourlyRate * 200);
@@ -1191,7 +1191,7 @@ window.addEventListener('load', function() {
 
         compileAttendanceData(logs);
         initAttendanceData();
-        
+
         const hash = window.location.hash.replace('#', '') || 'dashboard';
         if (hash === 'dashboard' || hash === 'report') {
           // Save search input value and focus/cursor position if focused

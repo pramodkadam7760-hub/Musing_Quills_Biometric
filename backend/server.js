@@ -41,9 +41,9 @@ const formatLocalDate = (d) => {
   if (!d) return '';
   if (typeof d === 'string') return d.split('T')[0];
   if (!(d instanceof Date)) return '';
-  return d.getFullYear() + '-' + 
-         String(d.getMonth() + 1).padStart(2, '0') + '-' + 
-         String(d.getDate()).padStart(2, '0');
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
 };
 
 // ============================================================
@@ -421,11 +421,11 @@ app.delete('/api/employees/:id', requireAdmin, async (req, res) => {
 // POST: Pay Salary / Reset Payroll Cycle for Employee
 app.post('/api/employees/:id/pay', requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { 
-    paymentDate, employeeName, startDate, baseSalary, daysPresent, 
-    weeklyOffs, holidays, absentDays, earnings, deductions, net 
+  const {
+    paymentDate, employeeName, startDate, baseSalary, daysPresent,
+    weeklyOffs, holidays, absentDays, earnings, deductions, net
   } = req.body; // format: YYYY-MM-DD for dates
-  
+
   if (!paymentDate) {
     return res.status(400).json({ error: 'paymentDate parameter is required' });
   }
@@ -435,8 +435,8 @@ app.post('/api/employees/:id/pay', requireAdmin, async (req, res) => {
     const payDate = new Date(paymentDate);
     payDate.setDate(payDate.getDate() + 1);
     const nextPayrollStartDate = payDate.getFullYear() + '-' +
-                                 String(payDate.getMonth() + 1).padStart(2, '0') + '-' +
-                                 String(payDate.getDate()).padStart(2, '0');
+      String(payDate.getMonth() + 1).padStart(2, '0') + '-' +
+      String(payDate.getDate()).padStart(2, '0');
 
     // 2. Insert record into salary_payments table
     await db.query(
@@ -521,7 +521,7 @@ app.post('/api/hardware/log', async (req, res) => {
       if (findRes.rows.length > 0) {
         empId = findRes.rows[0].id;
         empName = `${findRes.rows[0].first_name} ${findRes.rows[0].last_name}`;
-        
+
         const shiftStartStr = findRes.rows[0].shift_start ? findRes.rows[0].shift_start.slice(0, 5) : '09:00';
         const [shiftH, shiftM] = shiftStartStr.split(':').map(Number);
         const now = new Date();
@@ -540,15 +540,15 @@ app.post('/api/hardware/log', async (req, res) => {
              OR LOWER(TRIM(COALESCE(first_name, ''))) = $2
           LIMIT 1
         `, [cleanName, cleanName]);
-        
+
         if (nameRes.rows.length > 0) {
           empId = nameRes.rows[0].id;
           empName = `${nameRes.rows[0].first_name} ${nameRes.rows[0].last_name}`;
-          
+
           // Auto-relink: restore the broken fingerprint_id
           await db.query(`UPDATE employees SET fingerprint_id = $1, enrolled = true WHERE id = $2`, [fingerprint_id, empId]);
           console.log(`[HARDWARE] Auto-relinked fingerprint #${fingerprint_id} → ${empId} (${empName})`);
-          
+
           const shiftStartStr = nameRes.rows[0].shift_start ? nameRes.rows[0].shift_start.slice(0, 5) : '09:00';
           const [shiftH, shiftM] = shiftStartStr.split(':').map(Number);
           const now = new Date();
@@ -590,8 +590,8 @@ app.post('/api/hardware/log', async (req, res) => {
     `, [empId, empName || 'UNKNOWN', action.toUpperCase(), device || 'GATE_1']);
 
     console.log(`[HARDWARE] ${action.toUpperCase()} logged for ${empId} via ${device || 'GATE_1'} (Late: ${isLate}, Delay: ${delayMinutes} mins)`);
-    res.status(201).json({ 
-      success: true, 
+    res.status(201).json({
+      success: true,
       message: isLate ? 'Attendance logged (LATE)' : 'Attendance log recorded',
       late: isLate,
       delay: delayMinutes
@@ -648,7 +648,7 @@ app.post('/api/hardware/enroll', async (req, res) => {
         const nameParts = employee_name.trim().split(/\s+/);
         const firstName = nameParts[0] || 'Unknown';
         const lastName = nameParts.slice(1).join(' ') || '';
-        
+
         const placeholderEmail = `setup-${nextNum}@cubiccode.io`;
         const tzOffset = new Date().getTimezoneOffset() * 60000;
         const todayDate = new Date(Date.now() - tzOffset).toISOString().split('T')[0];
@@ -709,27 +709,27 @@ app.post('/api/hardware/delete', async (req, res) => {
     if (!fingerprint_id) {
       return res.status(400).json({ error: 'fingerprint_id is required' });
     }
-    
+
     // 1. Fetch employee to log deletion info
     const findRes = await db.query('SELECT id, first_name, last_name FROM employees WHERE fingerprint_id = $1', [fingerprint_id]);
-    
+
     if (findRes.rows.length === 0) {
       console.log(`[HARDWARE] Delete: No employee found with fingerprint slot #${fingerprint_id}`);
       return res.json({ success: true, message: 'No employee matched this fingerprint slot in database' });
     }
-    
+
     const empId = findRes.rows[0].id;
     const empName = `${findRes.rows[0].first_name} ${findRes.rows[0].last_name}`;
-    
+
     // 2. Delete employee from database
     await db.query('DELETE FROM employees WHERE id = $1', [empId]);
-    
+
     // 3. Log the deletion in attendance_logs for audit
     await db.query(`
       INSERT INTO attendance_logs (employee_id, employee_name, action, device)
       VALUES (NULL, $1, $2, $3)
     `, [empName, 'DELETE', 'ESP32_READER_1']);
-    
+
     console.log(`[HARDWARE] Deleted employee ${empName} (ID: ${empId}) via ESP32 deletion of slot #${fingerprint_id}`);
     res.json({ success: true, message: `Employee ${empName} successfully deleted from website database` });
   } catch (err) {
@@ -927,10 +927,10 @@ app.post('/api/holidays', requireAdmin, async (req, res) => {
       VALUES ($1, $2)
       ON DUPLICATE KEY UPDATE name = VALUES(name)
     `, [holiday_date, name.trim()]);
-    
+
     // Fetch the inserted/updated row (MySQL doesn't support RETURNING *)
     const fetchResult = await db.query('SELECT * FROM holidays WHERE holiday_date = $1', [holiday_date]);
-    
+
     console.log(`[HOLIDAYS] Added/Updated: ${name} on ${holiday_date}`);
     const row = fetchResult.rows[0];
     res.status(201).json({
@@ -969,7 +969,7 @@ app.post('/api/admin/reset-database', requireAdmin, async (req, res) => {
   const result = await db.resetDatabase();
   if (result.success) {
     // Destroy session after reset (admin_credentials table was recreated)
-    req.session.destroy(() => {});
+    req.session.destroy(() => { });
     res.json(result);
   } else {
     res.status(500).json(result);
@@ -989,11 +989,11 @@ app.get('/payslip/:id', async (req, res) => {
       return res.status(404).send('Employee not found');
     }
     const emp = empRes.rows[0];
-    
+
     // Fetch logs
     const logRes = await db.query('SELECT * FROM attendance_logs WHERE employee_id = $1', [id]);
     const logs = logRes.rows;
-    
+
     // Fetch holidays
     const holRes = await db.query('SELECT * FROM holidays');
     const holidaysList = holRes.rows;
@@ -1002,9 +1002,9 @@ app.get('/payslip/:id', async (req, res) => {
       if (!d) return '';
       if (typeof d === 'string') return d.split('T')[0];
       if (!(d instanceof Date)) return '';
-      return d.getFullYear() + '-' + 
-             String(d.getMonth() + 1).padStart(2, '0') + '-' + 
-             String(d.getDate()).padStart(2, '0');
+      return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
     };
 
     const empFormatted = {
@@ -1029,11 +1029,11 @@ app.get('/payslip/:id', async (req, res) => {
     const grouped = {};
     for (const log of logs) {
       const timestamp = new Date(log.timestamp);
-      const dateStr = timestamp.getFullYear() + '-' + 
-                      String(timestamp.getMonth() + 1).padStart(2, '0') + '-' + 
-                      String(timestamp.getDate()).padStart(2, '0');
-      const timeStr = String(timestamp.getHours()).padStart(2, '0') + ':' + 
-                      String(timestamp.getMinutes()).padStart(2, '0');
+      const dateStr = timestamp.getFullYear() + '-' +
+        String(timestamp.getMonth() + 1).padStart(2, '0') + '-' +
+        String(timestamp.getDate()).padStart(2, '0');
+      const timeStr = String(timestamp.getHours()).padStart(2, '0') + ':' +
+        String(timestamp.getMinutes()).padStart(2, '0');
       if (!grouped[dateStr]) grouped[dateStr] = [];
       grouped[dateStr].push({ action: log.action, timeStr, timestamp, device: log.device });
     }
@@ -1043,9 +1043,9 @@ app.get('/payslip/:id', async (req, res) => {
     for (let i = 30; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(now.getDate() - i);
-      const dateStr = d.getFullYear() + '-' + 
-                      String(d.getMonth() + 1).padStart(2, '0') + '-' + 
-                      String(d.getDate()).padStart(2, '0');
+      const dateStr = d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
       datesList.push({ dateStr, dayOfWeek: d.getDay() });
     }
 
@@ -1061,19 +1061,19 @@ app.get('/payslip/:id', async (req, res) => {
       let logout = null;
       let checkInLog = null;
       let checkOutLog = null;
-      
+
       if (dayLogs) {
         checkInLog = dayLogs.find(l => l.action === 'IN');
         checkOutLog = dayLogs.find(l => l.action === 'OUT');
         login = checkInLog ? checkInLog.timeStr : null;
         logout = checkOutLog ? checkOutLog.timeStr : null;
       }
-      
+
       const isHoliday = holidaysList.some(h => {
         const hDate = new Date(h.holiday_date);
-        const hDateStr = hDate.getFullYear() + '-' + 
-                         String(hDate.getMonth() + 1).padStart(2, '0') + '-' + 
-                         String(hDate.getDate()).padStart(2, '0');
+        const hDateStr = hDate.getFullYear() + '-' +
+          String(hDate.getMonth() + 1).padStart(2, '0') + '-' +
+          String(hDate.getDate()).padStart(2, '0');
         return hDateStr === dateStr;
       });
 
@@ -1127,11 +1127,11 @@ app.get('/payslip/:id', async (req, res) => {
     const absentDays = attendanceHistory.filter(r => r.status === 'Absent' && r.date !== todayStr).length;
     const halfDaysForLeaves = attendanceHistory.filter(r => r.status === 'Half Day' && r.date !== todayStr).length;
     const totalLeavesTaken = (empFormatted.leavesTaken || 0) + absentDays + (halfDaysForLeaves * 0.5);
-    
-    const paidAllowance = parseFloat(LEAVE_SETTINGS.monthlyLimit || 2.5); 
+
+    const paidAllowance = parseFloat(LEAVE_SETTINGS.monthlyLimit || 2.5);
     const paidLeaves = Math.min(totalLeavesTaken, paidAllowance);
     const paidDays = Math.min(WORK_DAYS, md.days + paidLeaves);
-    
+
     let basicPay = 0;
     if (empFormatted.salaryType === 'monthly') {
       basicPay = Math.round((empFormatted.monthlyRate / WORK_DAYS) * paidDays);
@@ -1159,8 +1159,8 @@ app.get('/payslip/:id', async (req, res) => {
     const penaltyPerLate = 100;
     const habitualThreshold = 3;
     const latePenalty = lateCount >= habitualThreshold ? (lateCount * penaltyPerLate) : 0;
-    const unpaidLeaveDeduction = empFormatted.salaryType === 'monthly' && totalLeavesTaken > paidAllowance 
-      ? Math.round((totalLeavesTaken - paidAllowance) * (empFormatted.monthlyRate / WORK_DAYS)) 
+    const unpaidLeaveDeduction = empFormatted.salaryType === 'monthly' && totalLeavesTaken > paidAllowance
+      ? Math.round((totalLeavesTaken - paidAllowance) * (empFormatted.monthlyRate / WORK_DAYS))
       : 0;
 
     const totalDeductions = latePenalty;

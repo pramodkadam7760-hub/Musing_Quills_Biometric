@@ -625,10 +625,18 @@ function renderWeeklySummary() {
   let totalPresent = 0, totalAbsent = 0, totalOnLeave = 0, totalLate = 0, totalOT = 0;
   const todayStr = getTodayStr();
 
+  // Calculate the actual date range for the last 7 calendar days
+  const today = new Date();
+  const sevenDaysAgo = new Date(today);
+  sevenDaysAgo.setDate(today.getDate() - 6); // 6 days back + today = 7 days
+  const startDateStr = sevenDaysAgo.getFullYear() + '-' +
+    String(sevenDaysAgo.getMonth() + 1).padStart(2, '0') + '-' +
+    String(sevenDaysAgo.getDate()).padStart(2, '0');
+
   const empWeeklyData = filteredEmps.map(emp => {
     const history = attendanceHistory[emp.id] || [];
-    // Last 7 calendar days
-    const last7 = history.slice(-7);
+    // Filter to actual last 7 calendar days by date, not by array position
+    const last7 = history.filter(r => r.date >= startDateStr && r.date <= todayStr);
     const present = last7.filter(r => ['Present', 'Work From Home'].includes(r.status)).length;
     const absent = last7.filter(r => r.status === 'Absent').length;
     const leave = last7.filter(r => r.status === 'Leave').length;
@@ -667,7 +675,7 @@ function renderWeeklySummary() {
       <div class="weekly-summary-header">
         <div>
           <h3><i class="ti ti-report" style="margin-right:8px;color:var(--primary)"></i>Weekly Management Report</h3>
-          <p>Summary for the past 7 days • ${getCurrentMonth()}</p>
+          <p>Summary for ${startDateStr} to ${todayStr} • ${getCurrentMonth()}</p>
         </div>
       </div>
 
