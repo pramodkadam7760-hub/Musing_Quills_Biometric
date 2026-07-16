@@ -6,9 +6,9 @@ if (window.location.port === '8000') {
 }
 
 // ---- Constants ----
-const DEPARTMENTS = ['Engineering', 'Design', 'HR', 'Sales', 'Finance', 'Operations', 'Marketing'];
-const DEPT_PREFIXES = { Engineering: 'ENG', Design: 'DES', HR: 'HR', Sales: 'SAL', Finance: 'FIN', Operations: 'OPS', Marketing: 'MKT' };
-const DEPT_CLASSES = { Engineering: 'dept-engineering', Design: 'dept-design', HR: 'dept-hr', Sales: 'dept-sales', Finance: 'dept-finance', Operations: 'dept-operations', Marketing: 'dept-marketing' };
+const DEPARTMENTS = ['Websites and Webapps Development', 'Design', 'HR', 'Sales', 'Finance', 'Operations', 'Marketing', 'Social Media'];
+const DEPT_PREFIXES = { 'Websites and Webapps Development': 'WWD', Design: 'DES', HR: 'HR', Sales: 'SAL', Finance: 'FIN', Operations: 'OPS', Marketing: 'MKT', 'Social Media': 'SMD' };
+const DEPT_CLASSES = { 'Websites and Webapps Development': 'dept-webdev', Design: 'dept-design', HR: 'dept-hr', Sales: 'dept-sales', Finance: 'dept-finance', Operations: 'dept-operations', Marketing: 'dept-marketing', 'Social Media': 'dept-socialmedia' };
 const STATUS_TYPES = ['Present', 'Absent', 'Half Day', 'Leave', 'Work From Home', 'Holiday', 'Weekly Off'];
 const STATUS_CLASSES = {
   'Present': 'success', 'Absent': 'danger', 'Half Day': 'warning',
@@ -480,7 +480,7 @@ function getAvatarColor(id) {
 }
 
 function getDeptClass(dept) {
-  return DEPT_CLASSES[dept] || 'dept-engineering';
+  return DEPT_CLASSES[dept] || 'dept-webdev';
 }
 
 function getStatusClass(status) {

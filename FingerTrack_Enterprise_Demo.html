@@ -67,13 +67,14 @@
       --info-subtle: rgba(59, 130, 246, 0.12);
 
       /* Department Colors */
-      --dept-engineering: #6366f1;
+      --dept-webdev: #6366f1;
       --dept-design: #a855f7;
       --dept-hr: #f59e0b;
       --dept-sales: #10b981;
       --dept-finance: #14b8a6;
       --dept-operations: #f97316;
       --dept-marketing: #ec4899;
+      --dept-socialmedia: #8b5cf6;
 
       /* Typography */
       --font: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -388,7 +389,7 @@
     }
 
     .admin-avatar {
-      background: linear-gradient(135deg, var(--dept-engineering), var(--dept-design));
+      background: linear-gradient(135deg, var(--dept-webdev), var(--dept-design));
     }
 
     .user-info {
@@ -631,9 +632,9 @@
       color: var(--primary);
     }
 
-    .chip.dept-engineering {
-      background: rgba(99, 102, 241, 0.1);
-      color: var(--dept-engineering);
+    .chip.dept-webdev {
+      background: rgba(99,102,241,0.1);
+      color: var(--dept-webdev);
     }
 
     .chip.dept-design {
@@ -664,6 +665,11 @@
     .chip.dept-marketing {
       background: rgba(236, 72, 153, 0.1);
       color: var(--dept-marketing);
+    }
+
+    .chip.dept-socialmedia {
+      background: rgba(139, 92, 246, 0.1);
+      color: var(--dept-socialmedia);
     }
 
     .chip-dot {
@@ -3408,9 +3414,9 @@
     /* ===== FingerTrack Enterprise — Core Application ===== */
 
     // ---- Constants ----
-    const DEPARTMENTS = ['Engineering', 'Design', 'HR', 'Sales', 'Finance', 'Operations', 'Marketing'];
-    const DEPT_PREFIXES = { Engineering: 'ENG', Design: 'DES', HR: 'HR', Sales: 'SAL', Finance: 'FIN', Operations: 'OPS', Marketing: 'MKT' };
-    const DEPT_CLASSES = { Engineering: 'dept-engineering', Design: 'dept-design', HR: 'dept-hr', Sales: 'dept-sales', Finance: 'dept-finance', Operations: 'dept-operations', Marketing: 'dept-marketing' };
+    const DEPARTMENTS = ['Websites and Webapps Development', 'Design', 'HR', 'Sales', 'Finance', 'Operations', 'Marketing', 'Social Media'];
+    const DEPT_PREFIXES = { 'Websites and Webapps Development': 'WWD', Design: 'DES', HR: 'HR', Sales: 'SAL', Finance: 'FIN', Operations: 'OPS', Marketing: 'MKT', 'Social Media': 'SMD' };
+    const DEPT_CLASSES = { 'Websites and Webapps Development': 'dept-webdev', Design: 'dept-design', HR: 'dept-hr', Sales: 'dept-sales', Finance: 'dept-finance', Operations: 'dept-operations', Marketing: 'dept-marketing', 'Social Media': 'dept-socialmedia' };
     const STATUS_TYPES = ['Present', 'Absent', 'Half Day', 'Leave', 'Work From Home', 'Holiday', 'Weekly Off'];
     const STATUS_CLASSES = {
       'Present': 'success', 'Absent': 'danger', 'Half Day': 'warning',
@@ -3896,7 +3902,7 @@
     }
 
     function getDeptClass(dept) {
-      return DEPT_CLASSES[dept] || 'dept-engineering';
+      return DEPT_CLASSES[dept] || 'dept-webdev';
     }
 
     function getStatusClass(status) {

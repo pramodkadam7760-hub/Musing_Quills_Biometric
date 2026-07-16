@@ -39,13 +39,14 @@
   --info-subtle: rgba(59, 130, 246, 0.12);
 
   /* Department Colors */
-  --dept-engineering: #6366f1;
+  --dept-webdev: #6366f1;
   --dept-design: #a855f7;
   --dept-hr: #f59e0b;
   --dept-sales: #10b981;
   --dept-finance: #14b8a6;
   --dept-operations: #f97316;
   --dept-marketing: #ec4899;
+  --dept-socialmedia: #8b5cf6;
 
   /* Typography */
   --font: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -352,7 +353,7 @@ body {
 }
 
 .admin-avatar {
-  background: linear-gradient(135deg, var(--dept-engineering), var(--dept-design));
+  background: linear-gradient(135deg, var(--dept-webdev), var(--dept-design));
 }
 
 .user-info {
@@ -560,13 +561,14 @@ tbody td {
 .chip.warning { background: var(--warning-subtle); color: var(--warning); }
 .chip.primary { background: var(--primary-subtle); color: var(--primary); }
 
-.chip.dept-engineering { background: rgba(99,102,241,0.1); color: var(--dept-engineering); }
+.chip.dept-webdev { background: rgba(99,102,241,0.1); color: var(--dept-webdev); }
 .chip.dept-design { background: rgba(168,85,247,0.1); color: var(--dept-design); }
 .chip.dept-hr { background: rgba(245,158,11,0.1); color: var(--dept-hr); }
 .chip.dept-sales { background: rgba(34,197,94,0.1); color: var(--dept-sales); }
 .chip.dept-finance { background: rgba(20,184,166,0.1); color: var(--dept-finance); }
 .chip.dept-operations { background: rgba(249,115,22,0.1); color: var(--dept-operations); }
 .chip.dept-marketing { background: rgba(236,72,153,0.1); color: var(--dept-marketing); }
+.chip.dept-socialmedia { background: rgba(139,92,246,0.1); color: var(--dept-socialmedia); }
 
 .chip-dot {
   width: 6px;
