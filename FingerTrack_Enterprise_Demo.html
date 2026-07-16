@@ -7053,7 +7053,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Employee</th><th>Login Time</th><th>Logout Time</th><th>Total Hours</th><th>Status</th></tr></thead>
+          <thead><tr><th>Date</th><th>Employee</th><th>Login Time</th><th>Logout Time</th><th>Total Hours</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
             ${dates.length > 0 ? dates.map(date => {
         const dayRecs = allRecords.filter(r => r.date === date).slice(0, 20);
@@ -7064,8 +7064,18 @@
                 <td class="mono">${r.logout ? format24to12(r.logout) : '—'}</td>
                 <td class="mono">${r.hours > 0 ? r.hours.toFixed(2) + ' Hrs' : '—'}</td>
                 <td><span class="chip ${getStatusClass(r.status)}">${r.status}</span></td>
+                <td>
+                  <div style="display:flex;gap:4px;">
+                    <button class="btn-icon" title="Edit Timings" onclick="openEditAttendanceModal('${r.emp.id}', '${r.date}', '${r.login || ''}', '${r.logout || ''}', '${r.emp.firstName} ${r.emp.lastName}')">
+                      <i class="ti ti-pencil"></i>
+                    </button>
+                    <button class="btn-icon text-danger" title="Reset Attendance" onclick="resetDailyAttendance('${r.emp.id}', '${r.date}', '${r.emp.firstName} ${r.emp.lastName}')">
+                      <i class="ti ti-rotate-clockwise"></i>
+                    </button>
+                  </div>
+                </td>
               </tr>`).join('');
-      }).join('') : '<tr><td colspan="6"><div class="empty-state"><i class="ti ti-calendar-off"></i><h4>No records found</h4><p>Try adjusting your date range or department filter</p></div></td></tr>'}
+      }).join('') : '<tr><td colspan="7"><div class="empty-state"><i class="ti ti-calendar-off"></i><h4>No records found</h4><p>Try adjusting your date range or department filter</p></div></td></tr>'}
           </tbody>
         </table>
       </div>
@@ -8127,6 +8137,91 @@
         document.getElementById('setting-current-password').value = '';
         document.getElementById('setting-new-password').value = '';
         document.getElementById('setting-confirm-password').value = '';
+      }
+    }
+
+    async function resetDailyAttendance(empId, date, name) {
+      if (!confirm(`Are you sure you want to reset the check-in and check-out logs for ${name} on ${date}?`)) {
+        return;
+      }
+      try {
+        const res = await apiFetch(`${API_BASE_URL}/attendance/reset`, {
+          method: 'POST',
+          body: { employee_id: empId, date: date }
+        });
+        if (res.success) {
+          showToast('Attendance logs reset successfully', 'success');
+          await loadAllData();
+          if (typeof activeReportTab !== 'undefined') {
+            switchReportTab(activeReportTab);
+          }
+        } else {
+          showToast(res.error || 'Failed to reset attendance', 'error');
+        }
+      } catch (err) {
+        showToast(err.message || 'Failed to reset attendance', 'error');
+      }
+    }
+
+    function openEditAttendanceModal(empId, date, loginTime, logoutTime, empName) {
+      const content = `
+        <div class="modal-header">
+          <div class="modal-header-text">
+            <h3>Edit Daily Timings</h3>
+            <p>${empName} • ${date}</p>
+          </div>
+          <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+        </div>
+        <form id="edit-attendance-form" onsubmit="saveAttendanceEdit(event)">
+          <div class="modal-body" style="padding-top:20px;">
+            <input type="hidden" id="edit-att-empid" value="${empId}">
+            <input type="hidden" id="edit-att-date" value="${date}">
+            
+            <div class="form-group" style="margin-bottom: 16px;">
+              <label class="form-label" for="edit-att-login">Check-In Time</label>
+              <input type="time" class="form-input" id="edit-att-login" value="${loginTime ? loginTime.substring(0, 5) : ''}">
+              <span class="text-muted" style="font-size: 11px; display: block; margin-top: 4px;">Leave empty to clear Check-In</span>
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 16px;">
+              <label class="form-label" for="edit-att-logout">Check-Out Time</label>
+              <input type="time" class="form-input" id="edit-att-logout" value="${logoutTime ? logoutTime.substring(0, 5) : ''}">
+              <span class="text-muted" style="font-size: 11px; display: block; margin-top: 4px;">Leave empty to clear Check-Out</span>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
+      `;
+      openModal(content);
+    }
+
+    async function saveAttendanceEdit(event) {
+      event.preventDefault();
+      const empId = document.getElementById('edit-att-empid').value;
+      const date = document.getElementById('edit-att-date').value;
+      const login = document.getElementById('edit-att-login').value;
+      const logout = document.getElementById('edit-att-logout').value;
+
+      try {
+        const res = await apiFetch(`${API_BASE_URL}/attendance/update`, {
+          method: 'POST',
+          body: { employee_id: empId, date, login, logout }
+        });
+        if (res.success) {
+          showToast('Attendance updated successfully', 'success');
+          closeModal();
+          await loadAllData();
+          if (typeof activeReportTab !== 'undefined') {
+            switchReportTab(activeReportTab);
+          }
+        } else {
+          showToast(res.error || 'Failed to update attendance', 'error');
+        }
+      } catch (err) {
+        showToast(err.message || 'Failed to update attendance', 'error');
       }
     }
 

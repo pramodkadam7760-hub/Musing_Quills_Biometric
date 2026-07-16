@@ -490,6 +490,68 @@ app.get('/api/attendance', requireAdmin, async (req, res) => {
   }
 });
 
+app.post('/api/attendance/reset', requireAdmin, async (req, res) => {
+  const { employee_id, date } = req.body;
+  if (!employee_id || !date) {
+    return res.status(400).json({ error: 'Missing employee_id or date' });
+  }
+  try {
+    await db.query(
+      'DELETE FROM attendance_logs WHERE employee_id = $1 AND DATE(timestamp) = $2',
+      [employee_id, date]
+    );
+    console.log(`[ATTENDANCE] Reset logs for employee ${employee_id} on ${date}`);
+    res.json({ success: true, message: 'Attendance logs reset successfully' });
+  } catch (err) {
+    console.error('[ATTENDANCE] Reset error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/attendance/update', requireAdmin, async (req, res) => {
+  const { employee_id, date, login, logout } = req.body;
+  if (!employee_id || !date) {
+    return res.status(400).json({ error: 'Missing employee_id or date' });
+  }
+
+  try {
+    const empRes = await db.query('SELECT first_name, last_name FROM employees WHERE id = $1 LIMIT 1', [employee_id]);
+    if (empRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+    const empName = `${empRes.rows[0].first_name} ${empRes.rows[0].last_name}`;
+
+    await db.query(
+      'DELETE FROM attendance_logs WHERE employee_id = $1 AND DATE(timestamp) = $2',
+      [employee_id, date]
+    );
+
+    if (login) {
+      const loginTimestamp = `${date} ${login}:00`;
+      await db.query(
+        `INSERT INTO attendance_logs (employee_id, employee_name, timestamp, action, device)
+         VALUES ($1, $2, $3, 'IN', 'DASHBOARD_EDIT')`,
+        [employee_id, empName, loginTimestamp]
+      );
+    }
+
+    if (logout) {
+      const logoutTimestamp = `${date} ${logout}:00`;
+      await db.query(
+        `INSERT INTO attendance_logs (employee_id, employee_name, timestamp, action, device)
+         VALUES ($1, $2, $3, 'OUT', 'DASHBOARD_EDIT')`,
+        [employee_id, empName, logoutTimestamp]
+      );
+    }
+
+    console.log(`[ATTENDANCE] Updated logs for employee ${employee_id} on ${date}: login=${login}, logout=${logout}`);
+    res.json({ success: true, message: 'Attendance logs updated successfully' });
+  } catch (err) {
+    console.error('[ATTENDANCE] Update error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============================================================
 // FINGERPRINT HARDWARE INTEGRATION (ESP32 — no session auth)
 // ============================================================
