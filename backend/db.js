@@ -63,6 +63,7 @@ const initializeDb = async () => {
         hourly_rate DECIMAL(12, 2) DEFAULT 0.00,
         lifecycle_status VARCHAR(50) DEFAULT 'Probation',
         probation_months INT DEFAULT 6,
+        probation_unit VARCHAR(20) DEFAULT 'months',
         probation_end_date DATE,
         confirmation_date DATE,
         notice_period_end_date DATE,
@@ -82,6 +83,13 @@ const initializeDb = async () => {
       console.log('[DB] Verified employees.leaves_taken column is DECIMAL(5,2).');
     } catch (colErr) {
       console.warn('[DB] Could not alter employees.leaves_taken column:', colErr.message);
+    }
+
+    try {
+      await pool.query("ALTER TABLE employees ADD COLUMN probation_unit VARCHAR(20) DEFAULT 'months'");
+      console.log('[DB] Added employees.probation_unit column.');
+    } catch (colErr) {
+      // Column already exists or table freshly created
     }
 
     // 2. Attendance Logs Table

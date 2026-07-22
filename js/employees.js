@@ -308,11 +308,17 @@ function openEmployeeModal(editId) {
           </div>
 
           <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Probation Period (Months)</label>
-              <input type="number" class="form-input" id="f-probationMonths" value="${emp ? (emp.probationMonths ?? 6) : 6}" min="0" oninput="updateLifecycleUI()">
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">Probation Duration <span class="required">*</span></label>
+              <div style="display: flex; gap: 8px;">
+                <input type="number" class="form-input" id="f-probationMonths" value="${emp ? (emp.probationMonths ?? 6) : 6}" min="0" oninput="updateLifecycleUI()" style="flex: 1;" placeholder="e.g. 6">
+                <select class="form-select" id="f-probationUnit" onchange="updateLifecycleUI()" style="width: 110px;">
+                  <option value="months" ${(!emp || emp.probationUnit === 'months' || !emp.probationUnit) ? 'selected' : ''}>Months</option>
+                  <option value="weeks" ${emp && emp.probationUnit === 'weeks' ? 'selected' : ''}>Weeks</option>
+                </select>
+              </div>
             </div>
-            <div class="form-group">
+            <div class="form-group" style="flex: 1;">
               <label class="form-label">Probation End Date</label>
               <input type="date" class="form-input" id="f-probationEndDate" readonly style="background-color: var(--bg-hover);">
             </div>
@@ -476,7 +482,8 @@ async function saveEmployee(e) {
   const joiningDate = document.getElementById('f-joiningDate').value;
   const dateOfBirth = document.getElementById('f-dateOfBirth').value;
   
-  const probationMonths = parseInt(document.getElementById('f-probationMonths')?.value) || 6;
+  const probationMonths = parseInt(document.getElementById('f-probationMonths')?.value) || 0;
+  const probationUnit = document.getElementById('f-probationUnit')?.value || 'months';
   const probationEndDate = document.getElementById('f-probationEndDate')?.value || null;
   const confirmationDate = document.getElementById('f-confirmationDate')?.value || null;
   const noticePeriodEndDate = document.getElementById('f-noticePeriodEndDate')?.value || null;
@@ -524,7 +531,7 @@ async function saveEmployee(e) {
     shiftStart: shiftStart || '10:00', shiftEnd: shiftEnd || '19:00',
     salaryType, monthlyRate, hourlyRate, bonus, leavesTaken, carriedForwardLeaves, enrolled,
     lifecycleStatus, joiningDate, dateOfBirth: dateOfBirth || null,
-    probationMonths, probationEndDate, confirmationDate, noticePeriodEndDate, exitDate, exitReason
+    probationMonths, probationUnit, probationEndDate, confirmationDate, noticePeriodEndDate, exitDate, exitReason
   };
 
   try {
@@ -585,20 +592,7 @@ async function viewEmployee(empId) {
   // probation end date calculation
   let probEndDateStr = emp.probationEndDate || '';
   if (!probEndDateStr && joinDate && emp.probationMonths) {
-    try {
-      const jDate = new Date(joinDate);
-      if (!isNaN(jDate.getTime())) {
-        jDate.setMonth(jDate.getMonth() + parseInt(emp.probationMonths));
-        if (!isNaN(jDate.getTime())) {
-          const year = jDate.getFullYear();
-          if (year >= 0 && year <= 9999) {
-            probEndDateStr = jDate.toISOString().split('T')[0];
-          }
-        }
-      }
-    } catch (dateErr) {
-      console.error('Error calculating view probation end date:', dateErr);
-    }
+    probEndDateStr = calcProbationEndDate(joinDate, emp.probationMonths, emp.probationUnit);
   }
 
   const confDate = emp.confirmationDate || '';
@@ -881,31 +875,48 @@ function switchEmpTab(tabId) {
   }
 }
 
+function calcProbationEndDate(joinDateStr, durationVal, unitVal) {
+  if (!joinDateStr) return '';
+  const duration = parseInt(durationVal);
+  if (isNaN(duration) || duration < 0) return '';
+  const unit = unitVal || 'months';
+
+  try {
+    const jDate = new Date(joinDateStr);
+    if (isNaN(jDate.getTime())) return '';
+
+    if (unit === 'weeks') {
+      jDate.setDate(jDate.getDate() + duration * 7);
+    } else {
+      const startDay = jDate.getDate();
+      jDate.setMonth(jDate.getMonth() + duration);
+      if (jDate.getDate() < startDay) {
+        jDate.setDate(0);
+      }
+    }
+
+    if (!isNaN(jDate.getTime())) {
+      const year = jDate.getFullYear();
+      if (year >= 1000 && year <= 9999) {
+        return jDate.toISOString().split('T')[0];
+      }
+    }
+  } catch (err) {
+    console.error('Error calculating probation end date:', err);
+  }
+  return '';
+}
+
 function updateLifecycleUI() {
   const statusEl = document.getElementById('f-lifecycleStatus');
   if (!statusEl) return;
   const status = statusEl.value;
-  const joinDate = document.getElementById('f-joiningDate').value;
-  const months = document.getElementById('f-probationMonths').value;
-  
+  const joinDate = document.getElementById('f-joiningDate')?.value || '';
+  const duration = document.getElementById('f-probationMonths')?.value || 0;
+  const unit = document.getElementById('f-probationUnit')?.value || 'months';
+
   const probEndInput = document.getElementById('f-probationEndDate');
-  let probEndDateStr = '';
-  if (joinDate && months) {
-    try {
-      const jDate = new Date(joinDate);
-      if (!isNaN(jDate.getTime())) {
-        jDate.setMonth(jDate.getMonth() + parseInt(months));
-        if (!isNaN(jDate.getTime())) {
-          const year = jDate.getFullYear();
-          if (year >= 0 && year <= 9999) {
-            probEndDateStr = jDate.toISOString().split('T')[0];
-          }
-        }
-      }
-    } catch (dateErr) {
-      console.error('Error calculating probation end date:', dateErr);
-    }
-  }
+  const probEndDateStr = calcProbationEndDate(joinDate, duration, unit);
   if (probEndInput) {
     probEndInput.value = probEndDateStr;
   }
@@ -917,6 +928,22 @@ function updateLifecycleUI() {
   if (rowConfirmation) rowConfirmation.style.display = (status === 'Confirmed') ? 'flex' : 'none';
   if (rowNotice) rowNotice.style.display = (status === 'Notice Period') ? 'flex' : 'none';
   if (rowExit) rowExit.style.display = (status === 'Exited') ? 'flex' : 'none';
+
+  // Auto-default milestone dates if empty when switching status
+  const confDateInput = document.getElementById('f-confirmationDate');
+  if (status === 'Confirmed' && confDateInput && !confDateInput.value) {
+    confDateInput.value = probEndDateStr || joinDate || getTodayDate();
+  }
+
+  const noticeDateInput = document.getElementById('f-noticePeriodEndDate');
+  if (status === 'Notice Period' && noticeDateInput && !noticeDateInput.value) {
+    noticeDateInput.value = getTodayDate();
+  }
+
+  const exitDateInput = document.getElementById('f-exitDate');
+  if (status === 'Exited' && exitDateInput && !exitDateInput.value) {
+    exitDateInput.value = getTodayDate();
+  }
 
   const timelineContainer = document.getElementById('lifecycle-timeline-container');
   if (timelineContainer) {

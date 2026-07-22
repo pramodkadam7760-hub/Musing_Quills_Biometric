@@ -302,6 +302,7 @@ app.get('/api/employees', requireAdmin, async (req, res) => {
       hourlyRate: parseFloat(emp.hourly_rate || 0),
       lifecycleStatus: emp.lifecycle_status,
       probationMonths: emp.probation_months,
+      probationUnit: emp.probation_unit || 'months',
       probationEndDate: formatLocalDate(emp.probation_end_date),
       confirmationDate: formatLocalDate(emp.confirmation_date),
       noticePeriodEndDate: formatLocalDate(emp.notice_period_end_date),
@@ -330,15 +331,15 @@ app.post('/api/employees', requireAdmin, async (req, res) => {
       INSERT INTO employees (
         id, fingerprint_id, first_name, last_name, email, phone, dob, joining_date,
         designation, department, reporting_manager, shift_start, shift_end, salary_type,
-        monthly_rate, hourly_rate, lifecycle_status, probation_months, probation_end_date, confirmation_date,
+        monthly_rate, hourly_rate, lifecycle_status, probation_months, probation_unit, probation_end_date, confirmation_date,
         notice_period_end_date, exit_date, exit_reason, enrolled, leaves_taken, payroll_start_date
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
     `, [
       emp.id, emp.fingerprintId || null, emp.firstName, emp.lastName || '', emp.email, emp.phone || '',
       emp.dateOfBirth || null, emp.joiningDate, emp.designation || '', emp.department || '',
       emp.reportingManager || '', emp.shiftStart, emp.shiftEnd, emp.salaryType || 'monthly',
       emp.monthlyRate || 0, emp.hourlyRate || 0, emp.lifecycleStatus || 'Probation',
-      emp.probationMonths || 6, emp.probationEndDate || null, emp.confirmationDate || null,
+      emp.probationMonths || 6, emp.probationUnit || 'months', emp.probationEndDate || null, emp.confirmationDate || null,
       emp.noticePeriodEndDate || null, emp.exitDate || null, emp.exitReason || '',
       emp.enrolled ? 1 : 0, emp.leavesTaken || 0, emp.payrollStartDate || emp.joiningDate
     ]);
@@ -375,16 +376,16 @@ app.put('/api/employees/:id', requireAdmin, async (req, res) => {
         fingerprint_id = $1, first_name = $2, last_name = $3, email = $4, phone = $5,
         dob = $6, joining_date = $7, designation = $8, department = $9, reporting_manager = $10,
         shift_start = $11, shift_end = $12, salary_type = $13, monthly_rate = $14, hourly_rate = $15,
-        lifecycle_status = $16, probation_months = $17, probation_end_date = $18, confirmation_date = $19,
-        notice_period_end_date = $20, exit_date = $21, exit_reason = $22, enrolled = $23, leaves_taken = $24,
-        payroll_start_date = $25, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $26
+        lifecycle_status = $16, probation_months = $17, probation_unit = $18, probation_end_date = $19, confirmation_date = $20,
+        notice_period_end_date = $21, exit_date = $22, exit_reason = $23, enrolled = $24, leaves_taken = $25,
+        payroll_start_date = $26, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $27
     `, [
       fpId || null, emp.firstName, emp.lastName || '', emp.email, emp.phone || '',
       emp.dateOfBirth || null, emp.joiningDate, emp.designation || '', emp.department || '',
       emp.reportingManager || '', emp.shiftStart, emp.shiftEnd, emp.salaryType || 'monthly',
       emp.monthlyRate || 0, emp.hourlyRate || 0, emp.lifecycleStatus, emp.probationMonths || 6,
-      emp.probationEndDate || null, emp.confirmationDate || null, emp.noticePeriodEndDate || null,
+      emp.probationUnit || 'months', emp.probationEndDate || null, emp.confirmationDate || null, emp.noticePeriodEndDate || null,
       emp.exitDate || null, emp.exitReason || '', emp.enrolled ? 1 : 0, emp.leavesTaken || 0,
       emp.payrollStartDate || emp.joiningDate, id
     ]);
