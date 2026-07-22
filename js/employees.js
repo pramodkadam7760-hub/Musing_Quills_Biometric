@@ -250,17 +250,17 @@ function openEmployeeModal(editId) {
         <div class="form-row">
           <div class="form-group" id="fg-monthly" style="${salaryType === 'hourly' ? 'display:none' : ''}">
             <label class="form-label">Monthly Rate (₹) <span class="required">*</span></label>
-            <input type="number" class="form-input" id="f-monthlyRate" value="${emp ? emp.monthlyRate : ''}" min="0" step="1000" placeholder="e.g. 65000">
+            <input type="number" class="form-input" id="f-monthlyRate" value="${emp ? emp.monthlyRate : ''}" min="0" step="any" placeholder="e.g. 65000">
           </div>
           <div class="form-group" id="fg-hourly" style="${salaryType === 'monthly' ? 'display:none' : ''}">
             <label class="form-label">Hourly Rate (₹) <span class="required">*</span></label>
-            <input type="number" class="form-input" id="f-hourlyRate" value="${emp ? emp.hourlyRate : ''}" min="0" step="50" placeholder="e.g. 450">
+            <input type="number" class="form-input" id="f-hourlyRate" value="${emp ? emp.hourlyRate : ''}" min="0" step="any" placeholder="e.g. 450">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Variable Pay / Bonus (₹)</label>
-            <input type="number" class="form-input" id="f-bonus" value="${emp ? (emp.bonus || 0) : 0}" min="0" step="500" placeholder="e.g. 5000">
+            <input type="number" class="form-input" id="f-bonus" value="${emp ? (emp.bonus || 0) : 0}" min="0" step="any" placeholder="e.g. 5000">
           </div>
         </div>
 
