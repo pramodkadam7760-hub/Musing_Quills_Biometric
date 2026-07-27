@@ -299,6 +299,12 @@ async function loadPaymentHistory() {
                   </td>
                   <td>${paymentDate}</td>
                   <td>
+                    <button class="btn btn-ghost btn-sm" onclick="printPaymentHistoryPayslip(${rec.id})" title="Print Payslip">
+                      <i class="ti ti-printer"></i>
+                    </button>
+                    <button class="btn btn-ghost btn-sm" onclick="sendPaymentHistoryWhatsApp(${rec.id})" title="Send via WhatsApp" style="color: #25D366;">
+                      <i class="ti ti-brand-whatsapp"></i>
+                    </button>
                     <button class="btn btn-ghost btn-sm" onclick="openEditPaymentModal(${rec.id})" title="Edit Payment Record" style="color: var(--primary);">
                       <i class="ti ti-edit"></i>
                     </button>
@@ -320,6 +326,111 @@ async function loadPaymentHistory() {
     `;
   }
 }
+
+// ===== Print Payslip for Payment History Record (Clean Employee Facing) =====
+function printPaymentHistoryPayslip(paymentId) {
+  const rec = salaryPaymentRecords.find(r => r.id === paymentId);
+  if (!rec) return;
+  const emp = employees.find(e => e.id === rec.employee_id) || {};
+
+  let printArea = document.getElementById('print-area');
+  if (!printArea) {
+    printArea = document.createElement('div');
+    printArea.id = 'print-area';
+    document.body.appendChild(printArea);
+  }
+
+  const payMonth = rec.payment_date ? new Date(rec.payment_date).toLocaleString('default', { month: 'long', year: 'numeric' }) : getCurrentMonth();
+
+  printArea.innerHTML = `
+    <div class="payslip-container">
+      <div class="payslip-header">
+        <img src="/cubiccode_logo.png" alt="Cubic Code Logo" style="height: 50px; margin-bottom: 10px;">
+        <h2 style="margin: 0; font-size: 24px; font-weight: 700; color: #000; letter-spacing: -0.5px;">CUBIC CODE</h2>
+        <p style="margin: 5px 0 0 0; color: #555;">Payslip for the month of ${payMonth}</p>
+      </div>
+      <div class="payslip-emp-details">
+        <div><strong>Employee Name:</strong> ${rec.employee_name}</div>
+        <div><strong>Employee ID:</strong> ${rec.employee_id}</div>
+        <div><strong>Department:</strong> ${emp.department || '—'}</div>
+        <div><strong>Designation:</strong> ${emp.designation || emp.role || '—'}</div>
+      </div>
+      
+      <table class="payslip-table">
+        <thead>
+          <tr>
+            <th>Earnings</th>
+            <th>Amount</th>
+            <th>Deductions</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Basic / Earnings</td>
+            <td>${formatCurrency(parseFloat(rec.earnings || 0))}</td>
+            <td>Total Deductions</td>
+            <td>${formatCurrency(parseFloat(rec.deductions || 0))}</td>
+          </tr>
+          <tr class="payslip-totals">
+            <td><strong>Total Earnings</strong></td>
+            <td><strong>${formatCurrency(parseFloat(rec.earnings || 0))}</strong></td>
+            <td><strong>Total Deductions</strong></td>
+            <td><strong>${formatCurrency(parseFloat(rec.deductions || 0))}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+      
+      <div class="payslip-net">
+        <h3>Net Salary: ${formatCurrency(parseFloat(rec.net_salary || 0))}</h3>
+      </div>
+      <div class="payslip-footer">
+        <p>This is a computer-generated document. No signature is required.</p>
+      </div>
+    </div>
+  `;
+
+  window.print();
+}
+
+// ===== Send WhatsApp Payslip for Payment History Record (Clean Employee Facing) =====
+function sendPaymentHistoryWhatsApp(paymentId) {
+  const rec = salaryPaymentRecords.find(r => r.id === paymentId);
+  if (!rec) return;
+  const emp = employees.find(e => e.id === rec.employee_id) || {};
+
+  const payMonth = rec.payment_date ? new Date(rec.payment_date).toLocaleString('default', { month: 'long', year: 'numeric' }) : getCurrentMonth();
+
+  const text = `*CUBIC CODE*\n` +
+               `*Salary Slip - ${payMonth}*\n\n` +
+               `*Employee Details:*\n` +
+               `• Name: ${rec.employee_name}\n` +
+               `• ID: ${rec.employee_id}\n` +
+               `• Dept: ${emp.department || '—'}\n` +
+               `• Designation: ${emp.designation || emp.role || '—'}\n\n` +
+               `*Earnings:*\n` +
+               `• Total Earnings: ${formatCurrency(parseFloat(rec.earnings || 0))}\n\n` +
+               `*Deductions:*\n` +
+               `• Total Deductions: ${formatCurrency(parseFloat(rec.deductions || 0))}\n\n` +
+               `*Net Payable Salary:* *${formatCurrency(parseFloat(rec.net_salary || 0))}*\n` +
+               `• Days Present: ${parseFloat(rec.present_days || 0)}\n\n` +
+               `*View / Download Official PDF Payslip:*\n` +
+               `${API_BASE_URL.replace(/\/api$/, '')}/payslip/${rec.employee_id}\n\n` +
+               `_This is a computer-generated payslip notification._`;
+
+  let phone = emp.phone ? emp.phone.replace(/[^0-9]/g, '') : '';
+  if (!phone) {
+    showToast('Employee phone number is not available or invalid', 'error');
+    return;
+  }
+  if (phone.length === 10) {
+    phone = '91' + phone;
+  }
+  
+  const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+  window.open(waUrl, '_blank');
+}
+
 
 // ===== Edit Payment Modal =====
 function openEditPaymentModal(paymentId) {
