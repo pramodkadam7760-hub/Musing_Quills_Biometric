@@ -633,7 +633,7 @@
     }
 
     .chip.dept-webdev {
-      background: rgba(99,102,241,0.1);
+      background: rgba(99, 102, 241, 0.1);
       color: var(--dept-webdev);
     }
 
@@ -3230,6 +3230,166 @@
       width: auto;
       vertical-align: middle;
     }
+/* ===== Payment History Styles ===== */
+.payment-history-section {
+  margin-top: 40px;
+}
+
+.payment-history-table-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+}
+
+.payment-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.payment-history-table thead th {
+  background: var(--hover-bg, #f1f5f9);
+  padding: 12px 14px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.payment-history-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s ease;
+}
+
+.payment-history-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.payment-history-table tbody tr:hover {
+  background: var(--hover-bg, #f8fafc);
+}
+
+.payment-history-table tbody td {
+  padding: 12px 14px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.ph-emp-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.ph-emp-id {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Status Chips */
+.chip-paid {
+  background: #dcfce7;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  display: inline-block;
+}
+
+.chip-revised {
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  display: inline-block;
+}
+
+.revised-info {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: help;
+}
+
+/* Empty State */
+.payment-history-empty {
+  text-align: center;
+  padding: 60px 20px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Edit Payment Modal Grid */
+.edit-payment-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.edit-payment-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.edit-payment-group input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 36px;
+  border-radius: 6px;
+  padding: 0 10px;
+}
+
+/* Auto / Manual Badge */
+.edit-net-auto-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #dcfce7;
+  color: #166534;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.edit-net-auto-badge.manual {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+/* Spinner for loading */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive: stack table on mobile */
+@media (max-width: 768px) {
+  .edit-payment-grid {
+    grid-template-columns: 1fr;
+  }
+  .payment-history-table-wrap {
+    font-size: 12px;
+  }
+}
   </style>
 </head>
 
@@ -6338,15 +6498,14 @@
         await viewEmployee(empId);
         switchViewEmpTab('documents');
         await loadAllData();
-        renderEmployees(document.getElementById('app'));
       } catch (err) {
         showToast(err.message || 'Verification failed', 'error');
       }
     }
 
-
-
     /* ===== Salary Breakdown View (Basic Pay + Late Penalty) ===== */
+
+    let salaryPaymentRecords = [];
 
     function renderSalary(container) {
       let totalPayroll = 0, totalNet = 0, totalDeductions = 0, totalLatePenalties = 0;
@@ -6439,7 +6598,25 @@
     <div class="salary-grid">
       ${salaryData.map(({ emp, salary }) => renderSalaryCard(emp, salary)).join('')}
     </div>
+
+    <!-- Payment History Section -->
+    <div class="payment-history-section" style="margin-top: 40px;">
+      <div class="view-header" style="margin-bottom: 16px;">
+        <div class="view-header-left">
+          <h2><i class="ti ti-history" style="margin-right: 8px;"></i>Payment History</h2>
+          <p>Records of all salary payments made</p>
+        </div>
+      </div>
+      <div id="payment-history-container">
+        <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+          <i class="ti ti-loader" style="font-size: 24px; animation: spin 1s linear infinite;"></i>
+          <p>Loading payment history...</p>
+        </div>
+      </div>
+    </div>
   `;
+
+      loadPaymentHistory();
     }
 
     function renderSalaryCard(emp, s) {
@@ -6559,7 +6736,323 @@
   `;
     }
 
-    // ===== Print Payslip =====
+    async function loadPaymentHistory() {
+      const container = document.getElementById('payment-history-container');
+      if (!container) return;
+
+      try {
+        salaryPaymentRecords = await apiFetch(`${API_BASE_URL}/salary-payments`);
+
+        if (!salaryPaymentRecords || salaryPaymentRecords.length === 0) {
+          container.innerHTML = `
+        <div class="payment-history-empty">
+          <i class="ti ti-receipt-off" style="font-size: 48px; color: var(--text-muted); margin-bottom: 12px;"></i>
+          <p style="color: var(--text-muted); font-size: 14px;">No salary payments recorded yet.</p>
+          <p style="color: var(--text-muted); font-size: 12px;">Payment records will appear here once you pay an employee's salary.</p>
+        </div>
+      `;
+          return;
+        }
+
+        container.innerHTML = `
+      <div class="payment-history-table-wrap">
+        <table class="payment-history-table">
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Period</th>
+              <th>Days Present</th>
+              <th>Base Salary</th>
+              <th>Earnings</th>
+              <th>Deductions</th>
+              <th>Net Salary</th>
+              <th>Status</th>
+              <th>Paid On</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${salaryPaymentRecords.map(rec => {
+          const isRevised = rec.status === 'Revised';
+          const statusClass = isRevised ? 'chip-revised' : 'chip-paid';
+          const revisedInfo = isRevised && rec.revised_at
+            ? `<div class="revised-info" title="${(rec.revision_note || '').replace(/"/g, '&quot;')}">
+                     <i class="ti ti-pencil" style="font-size: 11px;"></i>
+                     Revised ${new Date(rec.revised_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                   </div>`
+            : '';
+          const paymentDate = rec.payment_date ? new Date(rec.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+          const startDate = rec.start_date ? new Date(rec.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—';
+          const endDate = rec.end_date ? new Date(rec.end_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—';
+
+          return `
+                <tr>
+                  <td>
+                    <div class="ph-emp-name">${rec.employee_name || 'Employee'}</div>
+                    <div class="ph-emp-id">${rec.employee_id}</div>
+                  </td>
+                  <td>${startDate} — ${endDate}</td>
+                  <td>${parseFloat(rec.present_days || 0)}</td>
+                  <td>${formatCurrency(parseFloat(rec.base_salary || 0))}</td>
+                  <td>${formatCurrency(parseFloat(rec.earnings || 0))}</td>
+                  <td style="color: var(--danger);">−${formatCurrency(parseFloat(rec.deductions || 0))}</td>
+                  <td><strong>${formatCurrency(parseFloat(rec.net_salary || 0))}</strong></td>
+                  <td>
+                    <span class="chip ${statusClass}">${rec.status}</span>
+                    ${revisedInfo}
+                  </td>
+                  <td>${paymentDate}</td>
+                  <td>
+                    <button class="btn btn-ghost btn-sm" onclick="openEditPaymentModal(${rec.id})" title="Edit Payment Record" style="color: var(--primary);">
+                      <i class="ti ti-edit"></i> Edit
+                    </button>
+                  </td>
+                </tr>
+              `;
+        }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+      } catch (err) {
+        container.innerHTML = `
+      <div class="payment-history-empty">
+        <i class="ti ti-alert-circle" style="font-size: 48px; color: var(--danger); margin-bottom: 12px;"></i>
+        <p style="color: var(--danger); font-size: 14px;">Failed to load payment history.</p>
+        <p style="color: var(--text-muted); font-size: 12px;">${err.message || 'Unknown error'}</p>
+      </div>
+    `;
+      }
+    }
+
+    function openEditPaymentModal(paymentId) {
+      const rec = salaryPaymentRecords.find(r => r.id === paymentId);
+      if (!rec) {
+        showToast('Payment record not found', 'error');
+        return;
+      }
+
+      const presentDays = parseFloat(rec.present_days || 0);
+      const weeklyOffs = parseInt(rec.weekly_offs || 0);
+      const holidays = parseInt(rec.holidays || 0);
+      const absentDays = parseFloat(rec.absent_days || 0);
+      const baseSalary = parseFloat(rec.base_salary || 0);
+      const earnings = parseFloat(rec.earnings || 0);
+      const deductions = parseFloat(rec.deductions || 0);
+      const netSalary = parseFloat(rec.net_salary || 0);
+
+      openModal(`
+    <div class="modal-card" style="max-width: 560px; padding: 28px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div>
+          <h3 style="margin: 0; font-size: 20px; font-weight: 700; color: var(--text);">
+            <i class="ti ti-edit" style="margin-right: 6px; color: var(--primary);"></i>Edit Payment Record
+          </h3>
+          <p style="color: var(--text-muted); font-size: 13px; margin: 4px 0 0;">
+            ${rec.employee_name} • ID: ${rec.employee_id}
+          </p>
+        </div>
+        <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+      </div>
+
+      ${rec.status === 'Revised' && rec.revision_note ? `
+        <div style="background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 12px; color: #92400e;">
+          <i class="ti ti-info-circle" style="margin-right: 4px;"></i>
+          <strong>Previous revision:</strong> ${rec.revision_note}
+        </div>
+      ` : ''}
+
+      <div class="edit-payment-grid">
+        <div class="edit-payment-group">
+          <label>Present Days</label>
+          <input type="number" id="edit-present-days" class="form-control" value="${presentDays}" step="0.5" min="0" oninput="recalcEditPayment()">
+        </div>
+        <div class="edit-payment-group">
+          <label>Absent Days</label>
+          <input type="number" id="edit-absent-days" class="form-control" value="${absentDays}" step="0.5" min="0" oninput="recalcEditPayment()">
+        </div>
+        <div class="edit-payment-group">
+          <label>Weekly Offs</label>
+          <input type="number" id="edit-weekly-offs" class="form-control" value="${weeklyOffs}" step="1" min="0" oninput="recalcEditPayment()">
+        </div>
+        <div class="edit-payment-group">
+          <label>Holidays</label>
+          <input type="number" id="edit-holidays" class="form-control" value="${holidays}" step="1" min="0" oninput="recalcEditPayment()">
+        </div>
+      </div>
+
+      <div style="border-top: 1px solid var(--border, #e2e8f0); margin: 16px 0; padding-top: 16px;">
+        <div class="edit-payment-grid">
+          <div class="edit-payment-group">
+            <label>Base Salary (₹)</label>
+            <input type="number" id="edit-base-salary" class="form-control" value="${baseSalary}" step="1" min="0" oninput="recalcEditPayment()">
+          </div>
+          <div class="edit-payment-group">
+            <label>Earnings (₹)</label>
+            <input type="number" id="edit-earnings" class="form-control" value="${earnings}" step="1" min="0" oninput="recalcEditPayment()">
+          </div>
+          <div class="edit-payment-group">
+            <label>Deductions (₹)</label>
+            <input type="number" id="edit-deductions" class="form-control" value="${deductions}" step="1" min="0" oninput="recalcEditPayment()">
+          </div>
+          <div class="edit-payment-group">
+            <label style="display: flex; align-items: center; gap: 6px;">
+              Net Salary (₹)
+              <span class="edit-net-auto-badge" id="edit-net-badge">Auto</span>
+            </label>
+            <input type="number" id="edit-net-salary" class="form-control" value="${netSalary}" step="1" min="0" oninput="onNetSalaryManualEdit()">
+          </div>
+        </div>
+      </div>
+
+      <div style="margin: 16px 0;">
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text);">
+          Revision Note <span style="color: var(--danger);">*</span>
+        </label>
+        <textarea id="edit-revision-note" class="form-control" rows="2" placeholder="e.g. Corrected absent days from 5 to 3" style="width: 100%; box-sizing: border-box; resize: vertical; padding: 10px; border-radius: 6px;"></textarea>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitEditPayment(${paymentId})">
+          <i class="ti ti-check" style="margin-right: 4px;"></i>Save Changes
+        </button>
+      </div>
+    </div>
+  `);
+
+      window._editNetManualOverride = false;
+    }
+
+    function recalcEditPayment() {
+      if (window._editNetManualOverride) return;
+      const earnings = parseFloat(document.getElementById('edit-earnings').value) || 0;
+      const deductions = parseFloat(document.getElementById('edit-deductions').value) || 0;
+      const net = Math.max(0, earnings - deductions);
+      document.getElementById('edit-net-salary').value = Math.round(net);
+    }
+
+    function onNetSalaryManualEdit() {
+      window._editNetManualOverride = true;
+      const badge = document.getElementById('edit-net-badge');
+      if (badge) {
+        badge.textContent = 'Manual';
+        badge.classList.add('manual');
+      }
+    }
+
+    async function submitEditPayment(paymentId) {
+      const revision_note = document.getElementById('edit-revision-note').value;
+      if (!revision_note || !revision_note.trim()) {
+        showToast('Please enter a revision note explaining the change', 'error');
+        return;
+      }
+
+      const payload = {
+        present_days: parseFloat(document.getElementById('edit-present-days').value) || 0,
+        absent_days: parseFloat(document.getElementById('edit-absent-days').value) || 0,
+        weekly_offs: parseInt(document.getElementById('edit-weekly-offs').value) || 0,
+        holidays: parseInt(document.getElementById('edit-holidays').value) || 0,
+        base_salary: parseFloat(document.getElementById('edit-base-salary').value) || 0,
+        earnings: parseFloat(document.getElementById('edit-earnings').value) || 0,
+        deductions: parseFloat(document.getElementById('edit-deductions').value) || 0,
+        net_salary: parseFloat(document.getElementById('edit-net-salary').value) || 0,
+        revision_note: revision_note.trim()
+      };
+
+      try {
+        const res = await apiFetch(`${API_BASE_URL}/salary-payments/${paymentId}`, {
+          method: 'PUT',
+          body: payload
+        });
+        showToast(res.message || 'Payment record updated', 'success');
+        closeModal();
+        loadPaymentHistory();
+      } catch (err) {
+        showToast(err.message || 'Failed to update payment record', 'error');
+      }
+    }
+
+    function printPayslip(empId) {
+      const emp = employees.find(e => e.id === empId);
+      const s = computeSalary(emp);
+      if (!emp) return;
+
+      const formattedExcessLeaves = s.excessLeaves % 1 === 0 ? s.excessLeaves : s.excessLeaves.toFixed(1);
+
+      // Create an invisible print container if it doesn't exist
+      let printArea = document.getElementById('print-area');
+      if (!printArea) {
+        printArea = document.createElement('div');
+        printArea.id = 'print-area';
+        document.body.appendChild(printArea);
+      }
+
+      // Populate print area
+      printArea.innerHTML = `
+    <div class="payslip-container">
+      <div class="payslip-header">
+        <img src="/cubiccode_logo.png" alt="Cubic Code Logo" style="height: 50px; margin-bottom: 10px;">
+        <h2 style="margin: 0; font-size: 24px; font-weight: 700; color: #000; letter-spacing: -0.5px;">CUBIC CODE</h2>
+        <p style="margin: 5px 0 0 0; color: #555;">Payslip for the month of ${getCurrentMonth()}</p>
+      </div>
+      <div class="payslip-emp-details">
+        <div><strong>Employee Name:</strong> ${emp.firstName} ${emp.lastName}</div>
+        <div><strong>Employee ID:</strong> ${emp.id}</div>
+        <div><strong>Department:</strong> ${emp.department}</div>
+        <div><strong>Designation:</strong> ${emp.designation || emp.role}</div>
+      </div>
+      
+      <table class="payslip-table">
+        <thead>
+          <tr>
+            <th>Earnings</th>
+            <th>Amount</th>
+            <th>Deductions</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Basic Pay</td>
+            <td>${formatCurrency(s.basicPay)}</td>
+            <td>Unpaid Leaves (${formattedExcessLeaves} days)</td>
+            <td>${s.unpaidLeaveDeduction > 0 ? formatCurrency(s.unpaidLeaveDeduction) : '0'}</td>
+          </tr>
+          <tr>
+            <td>Overtime (${s.otHours} hrs)</td>
+            <td>${s.overtime > 0 ? formatCurrency(s.overtime) : '0'}</td>
+            <td>Late Penalty (${s.lateCount} occurrences)</td>
+            <td>${s.latePenalty > 0 ? formatCurrency(s.latePenalty) : '0'}</td>
+          </tr>
+          <tr>
+            <td>Variable Pay / Bonus</td>
+            <td>${s.bonus > 0 ? formatCurrency(s.bonus) : '0'}</td>
+            <td></td>
+            <td></td>
+          </tr>
+          <tr class="payslip-totals">
+            <td><strong>Total Earnings</strong></td>
+            <td><strong>${formatCurrency(s.totalEarnings)}</strong></td>
+            <td><strong>Total Deductions</strong></td>
+            <td><strong>${formatCurrency(s.totalDeductions)}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+      
+      <div class="payslip-net">
+        <h3>Net Salary: ${formatCurrency(s.net)}</h3>
+      </div>
+      <div class="payslip-footer">
+        <p>This is a computer-generated document. No signature is required.</p>
+      </div>
+    </div>
+  `;
+
+      // Print
+      window.print();
+    }
+
     // ===== Send Payslip via WhatsApp =====
     function sendPayslipWhatsApp(empId) {
       const emp = employees.find(e => e.id === empId);
@@ -7011,6 +7504,27 @@
     // ===== 1. ATTENDANCE SUMMARY =====
     function renderAttendanceSummary() {
       const filteredEmps = getFilteredEmployees();
+      const todayStr = getTodayDate();
+
+      let targetDateStr = todayStr;
+      if (reportFilterEndDate && reportFilterEndDate <= todayStr) {
+        targetDateStr = reportFilterEndDate;
+      }
+      if (reportFilterStartDate && reportFilterStartDate === reportFilterEndDate) {
+        targetDateStr = reportFilterStartDate;
+      }
+
+      const targetDateObj = new Date(targetDateStr + 'T00:00:00');
+      const isSunday = targetDateObj.getDay() === 0;
+      const isPublicHoliday = typeof holidaysList !== 'undefined' && holidaysList.some(h => {
+        if (!h.holiday_date) return false;
+        const hDateStr = h.holiday_date.split('T')[0];
+        return hDateStr === targetDateStr;
+      });
+      const isHolidayOrSunday = isSunday || isPublicHoliday;
+
+      const headerLabel = (targetDateStr === todayStr) ? 'Status Today' : `Status (${formatDateShort(targetDateStr)})`;
+
       return `
     <div class="table-panel">
       <div class="table-panel-header">
@@ -7019,11 +7533,15 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Employee</th><th>Employee ID</th><th>Department</th><th>Designation</th><th>Reporting Manager</th><th>Shift</th><th>Status Today</th></tr></thead>
+          <thead><tr><th>Employee</th><th>Employee ID</th><th>Department</th><th>Designation</th><th>Reporting Manager</th><th>Shift</th><th>${headerLabel}</th></tr></thead>
           <tbody>
             ${filteredEmps.map(emp => {
-        const att = todayAtt[emp.id] || {};
+        const att = (targetDateStr === todayStr) ? (todayAtt[emp.id] || {}) : {};
+        const history = attendanceHistory[emp.id] || [];
+        const dayRec = history.find(r => r.date === targetDateStr);
+
         let status = 'Absent', statusCls = 'danger';
+
         if (att.in && att.out) {
           status = 'Checked Out'; statusCls = 'info';
         } else if (att.in) {
@@ -7031,14 +7549,29 @@
           const shiftStartMin = shiftH * 60 + shiftM;
           const inDate = new Date(att.in);
           const inMin = inDate.getHours() * 60 + inDate.getMinutes();
-          if (inMin > shiftStartMin + 15) { // Assuming 15 min grace period
-            status = 'Present (Late)';
-            statusCls = 'warning';
+          if (inMin > shiftStartMin + 15) {
+            status = 'Present (Late)'; statusCls = 'warning';
           } else {
-            status = 'Present';
-            statusCls = 'success';
+            status = 'Present'; statusCls = 'success';
           }
+        } else if (dayRec && dayRec.login && dayRec.logout) {
+          status = 'Checked Out'; statusCls = 'info';
+        } else if (dayRec && dayRec.login) {
+          if (dayRec.delay > 15) {
+            status = 'Present (Late)'; statusCls = 'warning';
+          } else {
+            status = 'Present'; statusCls = 'success';
+          }
+        } else if (dayRec && dayRec.logout) {
+          status = 'Present'; statusCls = 'success';
+        } else if (isHolidayOrSunday || (dayRec && (dayRec.status === 'Holiday' || dayRec.status === 'Weekly Off'))) {
+          status = 'Holiday'; statusCls = 'info';
+        } else if (dayRec && dayRec.status === 'Leave') {
+          status = 'On Leave'; statusCls = 'info';
+        } else {
+          status = 'Absent'; statusCls = 'danger';
         }
+
         const color = getAvatarColor(emp.id);
         return `<tr>
                 <td><div class="employee-cell"><div class="avatar sm" style="background:${color}">${getInitials(emp.firstName, emp.lastName)}</div><span class="employee-cell-name">${emp.firstName} ${emp.lastName}</span></div></td>
@@ -7073,7 +7606,7 @@
       const dates = [...new Set(allRecords.map(r => r.date))].sort().reverse().slice(0, 15);
 
       return `
-    <div class="table-panel">
+        <div class="table-panel">
       <div class="table-panel-header">
         <span class="table-panel-title"><i class="ti ti-calendar-event" style="margin-right:6px;color:var(--primary)"></i>Daily Attendance Log</span>
         <span class="text-muted" style="font-size:12px">${dates.length} days shown</span>
@@ -7106,7 +7639,7 @@
           </tbody>
         </table>
       </div>
-    </div>`;
+    </div > `;
     }
 
     // ===== 3. LATE ARRIVALS =====
@@ -7131,7 +7664,7 @@
       const habitualLatecomers = Object.values(lateStats).filter(s => s.count >= 3).sort((a, b) => b.count - a.count);
 
       return `
-    <!-- Stats -->
+        <!-- Stats -->
     <div class="stat-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:18px">
       <div class="stat-card warning"><div class="stat-card-header"><div class="stat-card-icon"><i class="ti ti-alarm"></i></div><span class="stat-card-label">Late Arrivals</span></div><div class="stat-card-value">${lateRecords.length}</div><div class="stat-card-sub">Total instances in period</div></div>
       <div class="stat-card danger"><div class="stat-card-header"><div class="stat-card-icon"><i class="ti ti-clock-x"></i></div><span class="stat-card-label">Total Delay</span></div><div class="stat-card-value">${lateRecords.reduce((s, r) => s + r.delay, 0)} min</div><div class="stat-card-sub">Combined delay minutes</div></div>
@@ -7139,25 +7672,26 @@
     </div>
 
     <!-- Late Arrivals Table -->
-    <div class="table-panel" style="margin-bottom:18px">
-      <div class="table-panel-header"><span class="table-panel-title"><i class="ti ti-alarm" style="margin-right:6px;color:var(--warning)"></i>Late Arrival Records</span></div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Employee</th><th>Date</th><th>Shift Start</th><th>Login Time</th><th>Delay</th></tr></thead>
-          <tbody>
-            ${lateRecords.sort((a, b) => b.delay - a.delay).slice(0, 30).map(r => `<tr>
+        <div class="table-panel" style="margin-bottom:18px">
+          <div class="table-panel-header"><span class="table-panel-title"><i class="ti ti-alarm" style="margin-right:6px;color:var(--warning)"></i>Late Arrival Records</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Employee</th><th>Date</th><th>Shift Start</th><th>Login Time</th><th>Delay</th></tr></thead>
+              <tbody>
+                ${lateRecords.sort((a, b) => b.delay - a.delay).slice(0, 30).map(r => `<tr>
               <td><span class="fw-600">${r.emp.firstName} ${r.emp.lastName}</span></td>
               <td>${formatDateShort(r.date)}</td>
               <td class="mono">${format24to12(r.emp.shiftStart)}</td>
               <td class="mono">${format24to12(r.login)}</td>
               <td><span class="chip warning">${r.delay} Mins</span></td>
             </tr>`).join('') || '<tr><td colspan="5"><div class="empty-state"><i class="ti ti-mood-happy"></i><h4>No late arrivals</h4></div></td></tr>'}
-          </tbody>
-        </table>
-      </div>
-    </div>
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-    ${habitualLatecomers.length > 0 ? `
+    ${
+        habitualLatecomers.length > 0 ? `
     <!-- Habitual Latecomers -->
     <div class="table-panel">
       <div class="table-panel-header"><span class="table-panel-title"><i class="ti ti-user-exclamation" style="margin-right:6px;color:var(--danger)"></i>Habitual Latecomers (3+ instances)</span></div>
@@ -7175,7 +7709,8 @@
           </tbody>
         </table>
       </div>
-    </div>` : ''}`;
+    </div>` : ''
+      } `;
     }
 
     // ===== 4. EARLY EXITS =====
@@ -7191,27 +7726,27 @@
       });
 
       return `
-    <div class="stat-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:18px">
+        < div class="stat-grid" style = "grid-template-columns:repeat(2,1fr);margin-bottom:18px" >
       <div class="stat-card warning"><div class="stat-card-header"><div class="stat-card-icon"><i class="ti ti-door-exit"></i></div><span class="stat-card-label">Early Exits</span></div><div class="stat-card-value">${earlyRecords.length}</div><div class="stat-card-sub">Instances in period</div></div>
       <div class="stat-card danger"><div class="stat-card-header"><div class="stat-card-icon"><i class="ti ti-clock-minus"></i></div><span class="stat-card-label">Total Early Minutes</span></div><div class="stat-card-value">${earlyRecords.reduce((s, r) => s + r.earlyExit, 0)} min</div></div>
-    </div>
-    <div class="table-panel">
-      <div class="table-panel-header"><span class="table-panel-title"><i class="ti ti-door-exit" style="margin-right:6px;color:var(--warning)"></i>Early Exit Records</span></div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Employee</th><th>Date</th><th>Logout Time</th><th>Scheduled End</th><th>Early Exit</th></tr></thead>
-          <tbody>
-            ${earlyRecords.sort((a, b) => b.earlyExit - a.earlyExit).map(r => `<tr>
+    </div >
+        <div class="table-panel">
+          <div class="table-panel-header"><span class="table-panel-title"><i class="ti ti-door-exit" style="margin-right:6px;color:var(--warning)"></i>Early Exit Records</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Employee</th><th>Date</th><th>Logout Time</th><th>Scheduled End</th><th>Early Exit</th></tr></thead>
+              <tbody>
+                ${earlyRecords.sort((a, b) => b.earlyExit - a.earlyExit).map(r => `<tr>
               <td class="fw-600">${r.emp.firstName} ${r.emp.lastName}</td>
               <td>${formatDateShort(r.date)}</td>
               <td class="mono">${format24to12(r.logout)}</td>
               <td class="mono">${format24to12(r.emp.shiftEnd)}</td>
               <td><span class="chip warning">${r.earlyExit} Mins</span></td>
             </tr>`).join('') || '<tr><td colspan="5"><div class="empty-state"><i class="ti ti-mood-happy"></i><h4>No early exits</h4></div></td></tr>'}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
+              </tbody>
+            </table>
+          </div>
+        </div>`;
     }
 
     // ===== 5. WORKING HOURS =====
@@ -7229,11 +7764,11 @@
       }).filter(d => d.hasData);
 
       if (hoursData.length === 0) {
-        return `<div class="empty-state"><i class="ti ti-calendar-off"></i><h4>No Data Available</h4><p>No attendance records found for the selected date range. Try adjusting your filters.</p></div>`;
+        return `< div class="empty-state" ><i class="ti ti-calendar-off"></i><h4>No Data Available</h4><p>No attendance records found for the selected date range. Try adjusting your filters.</p></div > `;
       }
 
       return `
-    <div class="table-panel">
+        < div class="table-panel" >
       <div class="table-panel-header"><span class="table-panel-title"><i class="ti ti-clock-hour-4" style="margin-right:6px;color:var(--primary)"></i>Working Hours Report</span></div>
       <div class="table-wrap">
         <table>
@@ -7255,7 +7790,7 @@
           </tbody>
         </table>
       </div>
-    </div>`;
+    </div > `;
     }
 
     // ===== 6. MONTHLY DASHBOARD =====
@@ -7274,7 +7809,7 @@
       }).filter(d => d.hasData);
 
       if (dashData.length === 0) {
-        return `<div class="empty-state"><i class="ti ti-calendar-off"></i><h4>No Data Available</h4><p>No attendance records found for the selected date range. Try adjusting your filters.</p></div>`;
+        return `< div class="empty-state" ><i class="ti ti-calendar-off"></i><h4>No Data Available</h4><p>No attendance records found for the selected date range. Try adjusting your filters.</p></div > `;
       }
 
       const totPresent = dashData.reduce((s, d) => s + d.present, 0);
@@ -7283,19 +7818,19 @@
       const totLate = dashData.reduce((s, d) => s + d.late, 0);
 
       return `
-    <div class="stat-grid" style="margin-bottom:18px">
+        < div class="stat-grid" style = "margin-bottom:18px" >
       <div class="stat-card success"><div class="stat-card-header"><div class="stat-card-icon"><i class="ti ti-user-check"></i></div><span class="stat-card-label">Total Present</span></div><div class="stat-card-value">${totPresent}</div></div>
       <div class="stat-card danger"><div class="stat-card-header"><div class="stat-card-icon"><i class="ti ti-user-x"></i></div><span class="stat-card-label">Total Absent</span></div><div class="stat-card-value">${totAbsent}</div></div>
       <div class="stat-card info"><div class="stat-card-header"><div class="stat-card-icon"><i class="ti ti-calendar-off"></i></div><span class="stat-card-label">On Leave</span></div><div class="stat-card-value">${totLeave}</div></div>
       <div class="stat-card warning"><div class="stat-card-header"><div class="stat-card-icon"><i class="ti ti-alarm"></i></div><span class="stat-card-label">Late Marks</span></div><div class="stat-card-value">${totLate}</div></div>
-    </div>
-    <div class="table-panel">
-      <div class="table-panel-header"><span class="table-panel-title"><i class="ti ti-chart-bar" style="margin-right:6px;color:var(--primary)"></i>Monthly Attendance Dashboard</span></div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Employee</th><th>Present</th><th>Absent</th><th>Leave</th><th>Half Day</th><th>Late Marks</th><th>Overtime</th></tr></thead>
-          <tbody>
-            ${dashData.map(d => `<tr>
+    </div >
+        <div class="table-panel">
+          <div class="table-panel-header"><span class="table-panel-title"><i class="ti ti-chart-bar" style="margin-right:6px;color:var(--primary)"></i>Monthly Attendance Dashboard</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Employee</th><th>Present</th><th>Absent</th><th>Leave</th><th>Half Day</th><th>Late Marks</th><th>Overtime</th></tr></thead>
+              <tbody>
+                ${dashData.map(d => `<tr>
               <td class="fw-600">${d.emp.firstName} ${d.emp.lastName}</td>
               <td><span class="chip success">${d.present}</span></td>
               <td>${d.absent > 0 ? `<span class="chip danger">${d.absent}</span>` : '<span class="text-muted">0</span>'}</td>
@@ -7304,10 +7839,10 @@
               <td>${d.late > 0 ? `<span class="chip warning">${d.late}</span>` : '<span class="text-muted">0</span>'}</td>
               <td>${d.overtime > 0 ? `<span class="mono text-success fw-600">+${d.overtime}h</span>` : '<span class="text-muted">—</span>'}</td>
             </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
+              </tbody>
+            </table>
+          </div>
+        </div>`;
     }
 
 
@@ -7343,7 +7878,7 @@
         tableHeader = 'Employees Below 90% Attendance';
         emptyMessage = 'All Clear! All employees are above 90% attendance';
         tableBody = `
-      <table>
+          < table >
         <thead><tr><th>Employee</th><th>Department</th><th>Present</th><th>Working Days</th><th>Attendance %</th><th>Late Count</th></tr></thead>
         <tbody>
           ${currentList.sort((a, b) => a.attPct - b.attPct).map(d => {
@@ -7357,14 +7892,14 @@
             </tr>`;
         }).join('')}
         </tbody>
-      </table>
-    `;
+      </table >
+        `;
       } else if (activeComplianceFilter === 'repeatedLate') {
         currentList = repeatedLate;
-        tableHeader = `Employees with Repeated Late Arrivals (${LATE_PENALTY.warningThreshold}+ late marks)`;
-        emptyMessage = `All Clear! No employees with ${LATE_PENALTY.warningThreshold}+ late arrivals`;
+        tableHeader = `Employees with Repeated Late Arrivals(${ LATE_PENALTY.warningThreshold } + late marks)`;
+        emptyMessage = `All Clear! No employees with ${ LATE_PENALTY.warningThreshold } + late arrivals`;
         tableBody = `
-      <table>
+        < table >
         <thead><tr><th>Employee</th><th>Department</th><th>Late Marks</th><th>Present Days</th><th>Working Days</th></tr></thead>
         <tbody>
           ${currentList.sort((a, b) => b.lateCount - a.lateCount).map(d => {
@@ -7376,14 +7911,14 @@
             </tr>`;
         }).join('')}
         </tbody>
-      </table>
-    `;
+      </table >
+        `;
       } else if (activeComplianceFilter === 'frequentShort') {
         currentList = frequentShort;
         tableHeader = 'Employees with Frequent Short Hours (Below 90% expected hours)';
         emptyMessage = 'All Clear! No employees with frequent short hours';
         tableBody = `
-      <table>
+        < table >
         <thead><tr><th>Employee</th><th>Department</th><th>Actual Hours</th><th>Expected Hours</th><th>Efficiency %</th></tr></thead>
         <tbody>
           ${currentList.sort((a, b) => a.totalHours - b.totalHours).map(d => {
@@ -7399,14 +7934,14 @@
             </tr>`;
         }).join('')}
         </tbody>
-      </table>
-    `;
+      </table >
+        `;
       } else if (activeComplianceFilter === 'excessive') {
         currentList = excessive;
         tableHeader = 'Employees with Excessive Absenteeism (Below 60% attendance)';
         emptyMessage = 'All Clear! No excessive absenteeism detected';
         tableBody = `
-      <table>
+        < table >
         <thead><tr><th>Employee</th><th>Department</th><th>Present</th><th>Working Days</th><th>Attendance %</th></tr></thead>
         <tbody>
           ${currentList.sort((a, b) => a.attPct - b.attPct).map(d => {
@@ -7418,54 +7953,56 @@
             </tr>`;
         }).join('')}
         </tbody>
-      </table>
-    `;
+      </table >
+        `;
       }
 
       return `
-    <!-- Compliance Cards -->
-    <div class="compliance-grid">
-      <div class="compliance-card ${below90.length > 0 ? 'alert' : 'ok'} ${activeComplianceFilter === 'below90' ? 'active' : ''}" onclick="switchComplianceFilter('below90')" style="cursor:pointer;">
-        <div class="compliance-card-icon"><i class="ti ti-percentage"></i></div>
-        <div class="compliance-card-info">
-          <h4>Below 90% Attendance</h4>
-          <p>${below90.length} employee${below90.length !== 1 ? 's' : ''}</p>
-        </div>
-        <div class="compliance-card-count ${below90.length > 0 ? 'danger' : 'success'}">${below90.length}</div>
-      </div>
-      <div class="compliance-card ${repeatedLate.length > 0 ? 'alert' : 'ok'} ${activeComplianceFilter === 'repeatedLate' ? 'active' : ''}" onclick="switchComplianceFilter('repeatedLate')" style="cursor:pointer;">
-        <div class="compliance-card-icon"><i class="ti ti-alarm"></i></div>
-        <div class="compliance-card-info">
-          <h4>Repeated Late Arrivals</h4>
-          <p>${LATE_PENALTY.warningThreshold}+ late marks this month</p>
-        </div>
-        <div class="compliance-card-count ${repeatedLate.length > 0 ? 'warning' : 'success'}">${repeatedLate.length}</div>
-      </div>
-      <div class="compliance-card ${frequentShort.length > 0 ? 'alert' : 'ok'} ${activeComplianceFilter === 'frequentShort' ? 'active' : ''}" onclick="switchComplianceFilter('frequentShort')" style="cursor:pointer;">
-        <div class="compliance-card-icon"><i class="ti ti-clock-minus"></i></div>
-        <div class="compliance-card-info">
-          <h4>Frequent Short Hours</h4>
-          <p>Below 90% expected hours</p>
-        </div>
-        <div class="compliance-card-count ${frequentShort.length > 0 ? 'warning' : 'success'}">${frequentShort.length}</div>
-      </div>
-      <div class="compliance-card ${excessive.length > 0 ? 'critical' : 'ok'} ${activeComplianceFilter === 'excessive' ? 'active' : ''}" onclick="switchComplianceFilter('excessive')" style="cursor:pointer;">
-        <div class="compliance-card-icon"><i class="ti ti-alert-octagon"></i></div>
-        <div class="compliance-card-info">
-          <h4>Excessive Absenteeism</h4>
-          <p>Below 60% attendance</p>
-        </div>
-        <div class="compliance-card-count ${excessive.length > 0 ? 'danger' : 'success'}">${excessive.length}</div>
-      </div>
-    </div>
+        <!-- Compliance Cards -->
+          <div class="compliance-grid">
+            <div class="compliance-card ${below90.length > 0 ? 'alert' : 'ok'} ${activeComplianceFilter === 'below90' ? 'active' : ''}" onclick="switchComplianceFilter('below90')" style="cursor:pointer;">
+              <div class="compliance-card-icon"><i class="ti ti-percentage"></i></div>
+              <div class="compliance-card-info">
+                <h4>Below 90% Attendance</h4>
+                <p>${below90.length} employee${below90.length !== 1 ? 's' : ''}</p>
+              </div>
+              <div class="compliance-card-count ${below90.length > 0 ? 'danger' : 'success'}">${below90.length}</div>
+            </div>
+            <div class="compliance-card ${repeatedLate.length > 0 ? 'alert' : 'ok'} ${activeComplianceFilter === 'repeatedLate' ? 'active' : ''}" onclick="switchComplianceFilter('repeatedLate')" style="cursor:pointer;">
+              <div class="compliance-card-icon"><i class="ti ti-alarm"></i></div>
+              <div class="compliance-card-info">
+                <h4>Repeated Late Arrivals</h4>
+                <p>${LATE_PENALTY.warningThreshold}+ late marks this month</p>
+              </div>
+              <div class="compliance-card-count ${repeatedLate.length > 0 ? 'warning' : 'success'}">${repeatedLate.length}</div>
+            </div>
+            <div class="compliance-card ${frequentShort.length > 0 ? 'alert' : 'ok'} ${activeComplianceFilter === 'frequentShort' ? 'active' : ''}" onclick="switchComplianceFilter('frequentShort')" style="cursor:pointer;">
+              <div class="compliance-card-icon"><i class="ti ti-clock-minus"></i></div>
+              <div class="compliance-card-info">
+                <h4>Frequent Short Hours</h4>
+                <p>Below 90% expected hours</p>
+              </div>
+              <div class="compliance-card-count ${frequentShort.length > 0 ? 'warning' : 'success'}">${frequentShort.length}</div>
+            </div>
+            <div class="compliance-card ${excessive.length > 0 ? 'critical' : 'ok'} ${activeComplianceFilter === 'excessive' ? 'active' : ''}" onclick="switchComplianceFilter('excessive')" style="cursor:pointer;">
+              <div class="compliance-card-icon"><i class="ti ti-alert-octagon"></i></div>
+              <div class="compliance-card-info">
+                <h4>Excessive Absenteeism</h4>
+                <p>Below 60% attendance</p>
+              </div>
+              <div class="compliance-card-count ${excessive.length > 0 ? 'danger' : 'success'}">${excessive.length}</div>
+            </div>
+          </div>
 
-    ${currentList.length > 0 ? `
+    ${
+        currentList.length > 0 ? `
     <div class="table-panel" style="margin-top:18px">
       <div class="table-panel-header"><span class="table-panel-title"><i class="ti ti-shield-check" style="margin-right:6px;color:var(--danger)"></i>${tableHeader}</span></div>
       <div class="table-wrap">
         ${tableBody}
       </div>
-    </div>` : `<div class="empty-state" style="margin-top:18px"><i class="ti ti-shield-check"></i><h4>All Clear!</h4><p>${emptyMessage}</p></div>`}`;
+    </div>` : `<div class="empty-state" style="margin-top:18px"><i class="ti ti-shield-check"></i><h4>All Clear!</h4><p>${emptyMessage}</p></div>`
+      } `;
     }
 
     // ===== 10. WEEKLY SUMMARY =====
@@ -7509,7 +8046,7 @@
       const attPct = totalEmp > 0 ? Math.round((totalPresent / (totalEmp * 5)) * 100) : 0; // assume 5 work days in week
 
       const tableBody = empWeeklyData.map(d => `
-    <tr>
+        < tr >
       <td class="fw-600">${d.emp.firstName} ${d.emp.lastName}</td>
       <td><span class="chip ${getDeptClass(d.emp.department)}" style="font-size:10px;padding:2px 8px">${d.emp.department}</span></td>
       <td><span class="chip success">${d.present}</span></td>
@@ -7518,11 +8055,11 @@
       <td>${d.halfDay > 0 ? `<span class="chip warning">${d.halfDay}</span>` : '<span class="text-muted">0</span>'}</td>
       <td>${d.late > 0 ? `<span class="chip warning">${d.late}</span>` : '<span class="text-muted">0</span>'}</td>
       <td>${d.ot > 0 ? `<span class="mono text-success fw-600">+${d.ot}h</span>` : '<span class="text-muted">—</span>'}</td>
-    </tr>
-  `).join('');
+    </tr >
+        `).join('');
 
       return `
-    <div class="weekly-summary-card">
+        < div class="weekly-summary-card" >
       <div class="weekly-summary-header">
         <div>
           <h3><i class="ti ti-report" style="margin-right:8px;color:var(--primary)"></i>Weekly Management Report</h3>
@@ -7560,32 +8097,32 @@
           <div class="weekly-metric-info"><span class="weekly-metric-label">Overtime Hours</span><span class="weekly-metric-value">${Math.round(totalOT)}h</span></div>
         </div>
       </div>
-    </div>
+    </div >
 
-    <div class="table-panel" style="margin-top: 24px;">
-      <div class="table-panel-header">
-        <span class="table-panel-title"><i class="ti ti-users" style="margin-right:6px;color:var(--primary)"></i>Employee Weekly Performance Summary</span>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Department</th>
-              <th>Present Days</th>
-              <th>Absent Days</th>
-              <th>On Leave</th>
-              <th>Half Days</th>
-              <th>Late Marks</th>
-              <th>Overtime Hours</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableBody || '<tr><td colspan="8"><div class="empty-state"><h4>No data found</h4></div></td></tr>'}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
+        <div class="table-panel" style="margin-top: 24px;">
+          <div class="table-panel-header">
+            <span class="table-panel-title"><i class="ti ti-users" style="margin-right:6px;color:var(--primary)"></i>Employee Weekly Performance Summary</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Department</th>
+                  <th>Present Days</th>
+                  <th>Absent Days</th>
+                  <th>On Leave</th>
+                  <th>Half Days</th>
+                  <th>Late Marks</th>
+                  <th>Overtime Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tableBody || '<tr><td colspan="8"><div class="empty-state"><h4>No data found</h4></div></td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
     }
 
     // ===== EXPORT FUNCTIONS =====
@@ -7597,13 +8134,13 @@
         const md = monthData[emp.id] || { days: 0, hours: 0 };
         const attPct = Math.round((md.days / WORK_DAYS) * 100);
         const lateCount = getLateCount(emp.id);
-        return [emp.id, `${emp.firstName} ${emp.lastName}`, emp.department, emp.designation, emp.reportingManager, `${emp.shiftStart}-${emp.shiftEnd}`, md.days, md.hours.toFixed(2), attPct + '%', lateCount, salary.basic, salary.hra, salary.da, salary.conveyance, salary.medical, salary.special, salary.grossEarnings, salary.pf, salary.esi, salary.tds, salary.profTax, salary.latePenalty, salary.totalDeductions, salary.net].join(',');
+        return [emp.id, `${ emp.firstName } ${ emp.lastName } `, emp.department, emp.designation, emp.reportingManager, `${ emp.shiftStart } -${ emp.shiftEnd } `, md.days, md.hours.toFixed(2), attPct + '%', lateCount, salary.basic, salary.hra, salary.da, salary.conveyance, salary.medical, salary.special, salary.grossEarnings, salary.pf, salary.esi, salary.tds, salary.profTax, salary.latePenalty, salary.totalDeductions, salary.net].join(',');
       });
       const csv = [headers.join(','), ...rows].join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = `FingerTrack_Report_${getCurrentMonth().replace(/\s+/g, '_')}.csv`;
+      a.href = url; a.download = `FingerTrack_Report_${ getCurrentMonth().replace(/\s+/g, '_') }.csv`;
       a.click(); URL.revokeObjectURL(url);
       showToast('CSV report downloaded', 'success');
     }
@@ -7611,9 +8148,9 @@
     function exportReportPDF() {
       const printWindow = window.open('', '_blank');
       const content = document.getElementById('report-content').innerHTML;
-      printWindow.document.write(`<!DOCTYPE html><html><head><title>FingerTrack Report — ${getCurrentMonth()}</title>
-    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',sans-serif;padding:30px;color:#1a1a2e;font-size:12px}h1{font-size:20px;margin-bottom:4px}.subtitle{color:#666;margin-bottom:20px;font-size:13px}table{width:100%;border-collapse:collapse;margin:10px 0}th{background:#f4f4f8;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#666;border-bottom:2px solid #e0e0e0}td{padding:8px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even){background:#fafafa}.chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600}.stat-grid,.stat-card,.compliance-grid,.compliance-card,.weekly-summary-card,.weekly-summary-grid,.weekly-metric,.report-tabs{display:none!important}.table-panel{border:1px solid #e0e0e0;border-radius:8px;margin:10px 0;overflow:hidden}.table-panel-header{padding:10px;border-bottom:1px solid #e0e0e0;font-weight:700;font-size:13px;background:#f4f4f8}.footer{margin-top:30px;padding-top:14px;border-top:1px solid #e0e0e0;font-size:10px;color:#999;text-align:center}@media print{body{padding:15px}}</style>
-    </head><body><h1>FingerTrack Enterprise — Report</h1><div class="subtitle">${getCurrentMonth()} • ${activeReportTab.charAt(0).toUpperCase() + activeReportTab.slice(1)} Report</div>${content}<div class="footer">FingerTrack Enterprise v1.0 • Cubic Code • Confidential</div><script>window.onload=()=>{window.print()}<\/script></body></html>`);
+      printWindow.document.write(`< !DOCTYPE html > <html><head><title>FingerTrack Report — ${getCurrentMonth()}</title>
+        <style>*{margin:0;padding:0;box-sizing:border-box}body{font - family:'Segoe UI',sans-serif;padding:30px;color:#1a1a2e;font-size:12px}h1{font - size:20px;margin-bottom:4px}.subtitle{color:#666;margin-bottom:20px;font-size:13px}table{width:100%;border-collapse:collapse;margin:10px 0}th{background:#f4f4f8;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#666;border-bottom:2px solid #e0e0e0}td{padding:8px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even){background:#fafafa}.chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600}.stat-grid,.stat-card,.compliance-grid,.compliance-card,.weekly-summary-card,.weekly-summary-grid,.weekly-metric,.report-tabs{display:none!important}.table-panel{border:1px solid #e0e0e0;border-radius:8px;margin:10px 0;overflow:hidden}.table-panel-header{padding:10px;border-bottom:1px solid #e0e0e0;font-weight:700;font-size:13px;background:#f4f4f8}.footer{margin - top:30px;padding-top:14px;border-top:1px solid #e0e0e0;font-size:10px;color:#999;text-align:center}@media print{body{padding:15px}}</style>
+      </head><body><h1>FingerTrack Enterprise — Report</h1><div class="subtitle">${getCurrentMonth()} • ${activeReportTab.charAt(0).toUpperCase() + activeReportTab.slice(1)} Report</div>${content}<div class="footer">FingerTrack Enterprise v1.0 • Cubic Code • Confidential</div><script>window.onload=()=>{window.print()}<\/script></body></html>`);
       printWindow.document.close();
       showToast('PDF report opened in print dialog', 'success');
     }
@@ -7622,51 +8159,51 @@
     // ===== Audit Logs =====
     function renderAuditLogs() {
       if (typeof currentUser === 'undefined' || !currentUser || currentUser.systemRole !== 'SUPER_ADMIN') {
-        return `<div class="empty-state">
+        return `< div class="empty-state" >
       <i class="ti ti-lock" style="font-size:48px;color:var(--danger)"></i>
       <h4>Access Denied</h4>
       <p>You must be a Super Admin to view Audit Logs.</p>
-    </div>`;
+    </div > `;
       }
 
       if (auditLogs.length === 0) {
-        return `<div class="empty-state">
+        return `< div class="empty-state" >
       <i class="ti ti-shield-check"></i>
       <h4>No Audit Logs Found</h4>
       <p>System actions will be recorded here.</p>
-    </div>`;
+    </div > `;
       }
 
       const rows = auditLogs.map(log => `
-    <tr>
+        < tr >
       <td style="font-family:monospace;color:var(--text-muted);font-size:12px;">${log.id}</td>
       <td>${formatTime(log.timestamp)} <br><span class="text-muted" style="font-size:11px;">${formatDateShort(log.timestamp)}</span></td>
       <td><strong>${log.user}</strong></td>
       <td><span class="chip primary">${log.action}</span></td>
       <td style="max-width:300px;white-space:normal;line-height:1.4;">${log.details}</td>
-    </tr>
-  `).join('');
+    </tr >
+        `).join('');
 
       return `
-    <div class="report-section-header">
+        < div class="report-section-header" >
       <h3>System Audit Logs</h3>
       <p>Secure log of all critical system modifications.</p>
-    </div>
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Log ID</th>
-          <th>Timestamp</th>
-          <th>User / Entity</th>
-          <th>Action Type</th>
-          <th>Details</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows}
-      </tbody>
-    </table>
-  `;
+    </div >
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Log ID</th>
+              <th>Timestamp</th>
+              <th>User / Entity</th>
+              <th>Action Type</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      `;
     }
 
 
@@ -7676,285 +8213,285 @@
     function renderSettings(container) {
       const isEnabled = LATE_PENALTY.enabled;
       container.innerHTML = `
-    <div class="view-header">
-      <div class="view-header-left">
-        <h2>Admin Settings</h2>
-        <p>Global system settings and business rules configuration</p>
-      </div>
-    </div>
-
-    <div class="settings-grid">
-      <div class="settings-card">
-        <div class="settings-card-header">
-          <div class="settings-card-icon"><i class="ti ti-adjustments-horizontal"></i></div>
-          <div class="settings-card-title-group">
-            <h3>Late Penalty Policy</h3>
-            <p class="text-muted" style="font-size:12px;margin-top:2px;">Configure salary deductions and warnings for late arrival rules</p>
+        < div class="view-header" >
+          <div class="view-header-left">
+            <h2>Admin Settings</h2>
+            <p>Global system settings and business rules configuration</p>
           </div>
-        </div>
+    </div >
 
-        <div class="settings-card-body">
-          <!-- Policy Summary -->
-          <div class="settings-policy-summary">
-            <div class="summary-item">
-              <span class="summary-label">Grace Minutes</span>
-              <span class="summary-value">${LATE_PENALTY.graceMinutes} min</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Warning Threshold</span>
-              <span class="summary-value">${LATE_PENALTY.warningThreshold} lates</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Penalty / Late Mark</span>
-              <span class="summary-value">₹${LATE_PENALTY.penaltyPerLate}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Max Deduction Pct</span>
-              <span class="summary-value">${LATE_PENALTY.maxPenaltyPct}% of basic</span>
-            </div>
-          </div>
-
-          <!-- Toggle Option -->
-          <div class="settings-toggle-row">
-            <div class="toggle-info">
-              <span class="toggle-label">Late Penalty Calculations</span>
-              <p class="toggle-desc text-muted" style="margin-top:4px;">Enable or disable late arrival monetary penalties in payroll and scanner alerts.</p>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="toggle-late-penalty" ${isEnabled ? 'checked' : ''} onchange="handleLatePenaltyToggle(this.checked)">
-              <span class="slider round"></span>
-            </label>
-          </div>
-
-          <!-- Alert Explainer -->
-          <div class="settings-explainer ${isEnabled ? 'enabled' : 'disabled'}" id="settings-explainer">
-            <i class="ti ${isEnabled ? 'ti-circle-check' : 'ti-info-circle'}"></i>
-            <div class="explainer-content">
-              <strong>${isEnabled ? 'Policy Status: ACTIVE' : 'Policy Status: DEACTIVATED'}</strong>
-              <p id="explainer-text" style="font-size:12.5px;margin-top:2px;">
-                ${isEnabled
-          ? 'Late penalties are currently being calculated and applied to employee salary computations. Biometric check-in scanner will warn latecomers about salary deductions.'
-          : 'Late penalties are bypassed. Employee payroll will show late penalties as disabled with zero deductions. Scanner check-in alerts will omit deduction warnings.'}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="settings-card">
-        <div class="settings-card-header">
-          <div class="settings-card-icon"><i class="ti ti-calendar-off"></i></div>
-          <div class="settings-card-title-group">
-            <h3>Leave Settings</h3>
-            <p class="text-muted" style="font-size:12px;margin-top:2px;">Configure leave counts, LOP deductions, half-day, and carry forward rules</p>
-          </div>
-        </div>
-
-        <div class="settings-card-body">
-          <form id="leave-settings-form" onsubmit="saveLeaveSettings(event)">
-            <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
-              <div class="form-group" style="flex: 1;">
-                <label class="form-label" style="font-size: 12px;">Casual Leaves (Monthly)</label>
-                <input type="number" class="form-input" id="setting-casual-count" min="0" step="0.5" value="${LEAVE_SETTINGS.casualCount}">
-              </div>
-              <div class="form-group" style="flex: 1;">
-                <label class="form-label" style="font-size: 12px;">Sick Leaves (Monthly)</label>
-                <input type="number" class="form-input" id="setting-sick-count" min="0" step="0.5" value="${LEAVE_SETTINGS.sickCount}">
-              </div>
-              <div class="form-group" style="flex: 1;">
-                <label class="form-label" style="font-size: 12px;">Optional Leaves (Monthly)</label>
-                <input type="number" class="form-input" id="setting-optional-count" min="0" step="0.5" value="${LEAVE_SETTINGS.optionalCount}">
+        <div class="settings-grid">
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="settings-card-icon"><i class="ti ti-adjustments-horizontal"></i></div>
+              <div class="settings-card-title-group">
+                <h3>Late Penalty Policy</h3>
+                <p class="text-muted" style="font-size:12px;margin-top:2px;">Configure salary deductions and warnings for late arrival rules</p>
               </div>
             </div>
 
-            <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
-              <div class="form-group" style="flex: 1;">
-                <label class="form-label" style="font-size: 12px;">Monthly Leave Limit</label>
-                <input type="number" class="form-input" id="setting-monthly-limit" min="1" step="1" value="${LEAVE_SETTINGS.monthlyLimit}">
+            <div class="settings-card-body">
+              <!-- Policy Summary -->
+              <div class="settings-policy-summary">
+                <div class="summary-item">
+                  <span class="summary-label">Grace Minutes</span>
+                  <span class="summary-value">${LATE_PENALTY.graceMinutes} min</span>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-label">Warning Threshold</span>
+                  <span class="summary-value">${LATE_PENALTY.warningThreshold} lates</span>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-label">Penalty / Late Mark</span>
+                  <span class="summary-value">₹${LATE_PENALTY.penaltyPerLate}</span>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-label">Max Deduction Pct</span>
+                  <span class="summary-value">${LATE_PENALTY.maxPenaltyPct}% of basic</span>
+                </div>
               </div>
-              <div class="form-group" style="flex: 1;">
-                <label class="form-label" style="font-size: 12px;">Yearly Leave Limit</label>
-                <input type="number" class="form-input" id="setting-yearly-limit" min="1" step="1" value="${LEAVE_SETTINGS.yearlyLimit}">
-              </div>
-              <div class="form-group" style="flex: 1;">
-                <label class="form-label" style="font-size: 12px;">Max Carry Forward Days</label>
-                <input type="number" class="form-input" id="setting-carry-forward-max" min="0" step="1" value="${LEAVE_SETTINGS.carryForwardMax}">
-              </div>
-            </div>
 
-            <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
-              <div class="form-group" style="flex: 1;">
-                <label class="form-label" style="font-size: 12px;">Unpaid Leave Rule (LOP)</label>
-                <select class="form-select" id="setting-lop-rule" onchange="toggleLopFixedGroup(this.value)" style="height: 38px;">
-                  <option value="pro-rata" ${LEAVE_SETTINGS.lopRule === 'pro-rata' ? 'selected' : ''}>Pro-Rata (Salary/26 per day)</option>
-                  <option value="fixed" ${LEAVE_SETTINGS.lopRule === 'fixed' ? 'selected' : ''}>Fixed Amount per day</option>
-                </select>
+              <!-- Toggle Option -->
+              <div class="settings-toggle-row">
+                <div class="toggle-info">
+                  <span class="toggle-label">Late Penalty Calculations</span>
+                  <p class="toggle-desc text-muted" style="margin-top:4px;">Enable or disable late arrival monetary penalties in payroll and scanner alerts.</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggle-late-penalty" ${isEnabled ? 'checked' : ''} onchange="handleLatePenaltyToggle(this.checked)">
+                    <span class="slider round"></span>
+                </label>
               </div>
-              <div class="form-group" id="setting-lop-fixed-group" style="flex: 1; ${LEAVE_SETTINGS.lopRule === 'fixed' ? '' : 'display:none;'}">
-                <label class="form-label" style="font-size: 12px;">LOP Fixed Amount (₹)</label>
-                <input type="number" class="form-input" id="setting-lop-fixed-amount" min="0" step="100" value="${LEAVE_SETTINGS.lopFixedAmount}">
+
+              <!-- Alert Explainer -->
+              <div class="settings-explainer ${isEnabled ? 'enabled' : 'disabled'}" id="settings-explainer">
+                <i class="ti ${isEnabled ? 'ti-circle-check' : 'ti-info-circle'}"></i>
+                <div class="explainer-content">
+                  <strong>${isEnabled ? 'Policy Status: ACTIVE' : 'Policy Status: DEACTIVATED'}</strong>
+                  <p id="explainer-text" style="font-size:12.5px;margin-top:2px;">
+                    ${isEnabled
+                      ? 'Late penalties are currently being calculated and applied to employee salary computations. Biometric check-in scanner will warn latecomers about salary deductions.'
+                      : 'Late penalties are bypassed. Employee payroll will show late penalties as disabled with zero deductions. Scanner check-in alerts will omit deduction warnings.'}
+                  </p>
+                </div>
               </div>
-              <div class="form-group" style="flex: 1;">
-                <label class="form-label" style="font-size: 12px;">Half-Day Deduction Rule</label>
-                <select class="form-select" id="setting-half-day-rule" style="height: 38px;">
-                  <option value="0.5" ${LEAVE_SETTINGS.halfDayRule === '0.5' ? 'selected' : ''}>Counts as 0.5 Leave</option>
-                  <option value="0.0" ${LEAVE_SETTINGS.halfDayRule === '0.0' ? 'selected' : ''}>Fully Paid (0.0 Leave)</option>
-                  <option value="1.0" ${LEAVE_SETTINGS.halfDayRule === '1.0' ? 'selected' : ''}>Counts as Full Leave (1.0)</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="settings-toggle-row" style="padding: 12px 0 0 0; border-top: 1px solid var(--border); margin-top: 16px;">
-              <div class="toggle-info">
-                <span class="toggle-label" style="font-size: 13px;">Enable Leave Carry Forward</span>
-                <p class="toggle-desc text-muted" style="margin-top:2px; font-size:11.5px;">Allows unused paid leaves to roll over to subsequent periods.</p>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="setting-carry-forward" ${LEAVE_SETTINGS.carryForward ? 'checked' : ''}>
-                <span class="slider round"></span>
-              </label>
-            </div>
-
-            <div style="margin-top: 18px; display: flex; justify-content: flex-end;">
-              <button type="submit" class="btn btn-primary btn-sm"><i class="ti ti-device-floppy"></i> Save Leave Settings</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <!-- === Payroll & Overtime Settings === -->
-      <div class="settings-card">
-        <div class="settings-card-header">
-          <div class="settings-card-icon" style="background: rgba(99,102,241,0.1); color: var(--primary);"><i class="ti ti-cash"></i></div>
-          <div class="settings-card-title-group">
-            <h3>Payroll & Overtime Rules</h3>
-            <p class="text-muted" style="font-size:12px;margin-top:2px;">Configure overtime rates, monthly work days, and auto lunch break deductions</p>
-          </div>
-        </div>
-
-        <div class="settings-card-body">
-          <form id="payroll-settings-form" onsubmit="savePayrollSettings(event)">
-            <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
-              <div class="form-group" style="flex: 1;">
-                <label class="form-label" style="font-size: 12px;">Monthly Work Days <span class="required">*</span></label>
-                <input type="number" class="form-input" id="setting-payroll-workdays" value="${PAYROLL_SETTINGS.workDays}" min="1" max="31" required>
-              </div>
-              <div class="form-group" style="flex: 1;">
-                <label class="form-label" style="font-size: 12px;">OT Rate Multiplier <span class="required">*</span></label>
-                <input type="number" class="form-input" id="setting-payroll-multiplier" value="${PAYROLL_SETTINGS.otMultiplier}" min="0.5" max="5.0" step="0.1" required>
-              </div>
-            </div>
-
-            <div class="settings-toggle-row" style="padding: 12px 0 0 0; border-top: 1px solid var(--border); margin-top: 16px;">
-              <div class="toggle-info">
-                <span class="toggle-label" style="font-size: 13px;">Enable Overtime for Monthly Employees</span>
-                <p class="toggle-desc text-muted" style="margin-top:2px; font-size:11.5px;">If enabled, monthly salaried employees earn daily overtime beyond expected hours.</p>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="setting-payroll-monthly-ot" ${PAYROLL_SETTINGS.monthlyOtEnabled ? 'checked' : ''}>
-                <span class="slider round"></span>
-              </label>
-            </div>
-
-            <div class="settings-toggle-row" style="padding: 12px 0 0 0; border-top: 1px solid var(--border); margin-top: 16px;">
-              <div class="toggle-info">
-                <span class="toggle-label" style="font-size: 13px;">Auto 1-Hour Lunch Break Deduction</span>
-                <p class="toggle-desc text-muted" style="margin-top:2px; font-size:11.5px;">Deduct 1 hour from daily working hours if they exceed 5 hours.</p>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="setting-payroll-lunch-deduction" ${PAYROLL_SETTINGS.lunchBreakDeduction ? 'checked' : ''}>
-                <span class="slider round"></span>
-              </label>
-            </div>
-
-            <div style="margin-top: 18px; display: flex; justify-content: flex-end;">
-              <button type="submit" class="btn btn-primary btn-sm"><i class="ti ti-device-floppy"></i> Save Payroll Rules</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <div class="settings-card">
-        <div class="settings-card-header">
-          <div class="settings-card-icon"><i class="ti ti-lock"></i></div>
-          <div class="settings-card-title-group">
-            <h3>Change Password</h3>
-            <p class="text-muted" style="font-size:12px;margin-top:2px;">Update the admin login password for this portal</p>
-          </div>
-        </div>
-
-        <div class="settings-card-body">
-          <form id="change-password-form" onsubmit="handleChangePassword(event)">
-            <div class="form-group" style="margin-bottom: 12px;">
-              <label class="form-label" style="font-size: 12px;">Current Password</label>
-              <input type="password" class="form-input" id="setting-current-password" placeholder="Enter current password" required>
-            </div>
-            <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
-              <div class="form-group" style="flex: 1;">
-                <label class="form-label" style="font-size: 12px;">New Password</label>
-                <input type="password" class="form-input" id="setting-new-password" placeholder="Enter new password (min 4 chars)" required minlength="4">
-              </div>
-              <div class="form-group" style="flex: 1;">
-                <label class="form-label" style="font-size: 12px;">Confirm New Password</label>
-                <input type="password" class="form-input" id="setting-confirm-password" placeholder="Re-enter new password" required minlength="4">
-              </div>
-            </div>
-
-            <div class="settings-explainer disabled" style="margin-bottom: 14px;">
-              <i class="ti ti-info-circle"></i>
-              <div class="explainer-content">
-                <strong>Password Policy</strong>
-                <p style="font-size:12.5px;margin-top:2px;">
-                  Password must be at least 4 characters. After changing, you will need to use the new password for all future logins. Default password is <code>123456</code>.
-                </p>
-              </div>
-            </div>
-
-            <div style="display: flex; justify-content: flex-end;">
-              <button type="submit" class="btn btn-primary btn-sm"><i class="ti ti-key"></i> Update Password</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <!-- === Holiday Calendar Settings === -->
-      <div class="settings-card">
-        <div class="settings-card-header">
-          <div class="settings-card-icon" style="background: rgba(20,184,166,0.1); color: var(--teal);"><i class="ti ti-calendar-event"></i></div>
-          <div class="settings-card-title-group">
-            <h3>Holiday Calendar</h3>
-            <p class="text-muted" style="font-size:12px;margin-top:2px;">Manage official public holidays. These are treated as paid leaves.</p>
-          </div>
-        </div>
-
-        <div class="settings-card-body">
-          <form id="add-holiday-form" onsubmit="addHoliday(event)" style="margin-bottom: 20px;">
-            <div class="form-row" style="display: flex; gap: 12px; align-items: flex-end;">
-              <div class="form-group" style="flex: 2;">
-                <label class="form-label" style="font-size: 12px;">Holiday Name</label>
-                <input type="text" class="form-input" id="new-holiday-name" placeholder="e.g. Independence Day" required>
-              </div>
-              <div class="form-group" style="flex: 1.5;">
-                <label class="form-label" style="font-size: 12px;">Date</label>
-                <input type="date" class="form-input" id="new-holiday-date" required>
-              </div>
-              <div style="flex: 0.5;">
-                <button type="submit" class="btn btn-primary" style="height: 38px; padding: 0 16px;"><i class="ti ti-plus"></i> Add</button>
-              </div>
-            </div>
-          </form>
-
-          <div style="border-top: 1px solid var(--border); padding-top: 16px;">
-            <h4 style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary);">Active Holidays</h4>
-            <div id="holiday-list-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 4px;">
-              <!-- Rendered dynamically -->
             </div>
           </div>
-        </div>
-      </div>
 
-    </div>
-  `;
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="settings-card-icon"><i class="ti ti-calendar-off"></i></div>
+              <div class="settings-card-title-group">
+                <h3>Leave Settings</h3>
+                <p class="text-muted" style="font-size:12px;margin-top:2px;">Configure leave counts, LOP deductions, half-day, and carry forward rules</p>
+              </div>
+            </div>
+
+            <div class="settings-card-body">
+              <form id="leave-settings-form" onsubmit="saveLeaveSettings(event)">
+                <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
+                  <div class="form-group" style="flex: 1;">
+                    <label class="form-label" style="font-size: 12px;">Casual Leaves (Monthly)</label>
+                    <input type="number" class="form-input" id="setting-casual-count" min="0" step="0.5" value="${LEAVE_SETTINGS.casualCount}">
+                  </div>
+                  <div class="form-group" style="flex: 1;">
+                    <label class="form-label" style="font-size: 12px;">Sick Leaves (Monthly)</label>
+                    <input type="number" class="form-input" id="setting-sick-count" min="0" step="0.5" value="${LEAVE_SETTINGS.sickCount}">
+                  </div>
+                  <div class="form-group" style="flex: 1;">
+                    <label class="form-label" style="font-size: 12px;">Optional Leaves (Monthly)</label>
+                    <input type="number" class="form-input" id="setting-optional-count" min="0" step="0.5" value="${LEAVE_SETTINGS.optionalCount}">
+                  </div>
+                </div>
+
+                <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
+                  <div class="form-group" style="flex: 1;">
+                    <label class="form-label" style="font-size: 12px;">Monthly Leave Limit</label>
+                    <input type="number" class="form-input" id="setting-monthly-limit" min="1" step="1" value="${LEAVE_SETTINGS.monthlyLimit}">
+                  </div>
+                  <div class="form-group" style="flex: 1;">
+                    <label class="form-label" style="font-size: 12px;">Yearly Leave Limit</label>
+                    <input type="number" class="form-input" id="setting-yearly-limit" min="1" step="1" value="${LEAVE_SETTINGS.yearlyLimit}">
+                  </div>
+                  <div class="form-group" style="flex: 1;">
+                    <label class="form-label" style="font-size: 12px;">Max Carry Forward Days</label>
+                    <input type="number" class="form-input" id="setting-carry-forward-max" min="0" step="1" value="${LEAVE_SETTINGS.carryForwardMax}">
+                  </div>
+                </div>
+
+                <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
+                  <div class="form-group" style="flex: 1;">
+                    <label class="form-label" style="font-size: 12px;">Unpaid Leave Rule (LOP)</label>
+                    <select class="form-select" id="setting-lop-rule" onchange="toggleLopFixedGroup(this.value)" style="height: 38px;">
+                      <option value="pro-rata" ${LEAVE_SETTINGS.lopRule === 'pro-rata' ? 'selected' : ''}>Pro-Rata (Salary/26 per day)</option>
+                      <option value="fixed" ${LEAVE_SETTINGS.lopRule === 'fixed' ? 'selected' : ''}>Fixed Amount per day</option>
+                    </select>
+                  </div>
+                  <div class="form-group" id="setting-lop-fixed-group" style="flex: 1; ${LEAVE_SETTINGS.lopRule === 'fixed' ? '' : 'display:none;'}">
+                    <label class="form-label" style="font-size: 12px;">LOP Fixed Amount (₹)</label>
+                    <input type="number" class="form-input" id="setting-lop-fixed-amount" min="0" step="100" value="${LEAVE_SETTINGS.lopFixedAmount}">
+                  </div>
+                  <div class="form-group" style="flex: 1;">
+                    <label class="form-label" style="font-size: 12px;">Half-Day Deduction Rule</label>
+                    <select class="form-select" id="setting-half-day-rule" style="height: 38px;">
+                      <option value="0.5" ${LEAVE_SETTINGS.halfDayRule === '0.5' ? 'selected' : ''}>Counts as 0.5 Leave</option>
+                      <option value="0.0" ${LEAVE_SETTINGS.halfDayRule === '0.0' ? 'selected' : ''}>Fully Paid (0.0 Leave)</option>
+                      <option value="1.0" ${LEAVE_SETTINGS.halfDayRule === '1.0' ? 'selected' : ''}>Counts as Full Leave (1.0)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="settings-toggle-row" style="padding: 12px 0 0 0; border-top: 1px solid var(--border); margin-top: 16px;">
+                  <div class="toggle-info">
+                    <span class="toggle-label" style="font-size: 13px;">Enable Leave Carry Forward</span>
+                    <p class="toggle-desc text-muted" style="margin-top:2px; font-size:11.5px;">Allows unused paid leaves to roll over to subsequent periods.</p>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="setting-carry-forward" ${LEAVE_SETTINGS.carryForward ? 'checked' : ''}>
+                      <span class="slider round"></span>
+                  </label>
+                </div>
+
+                <div style="margin-top: 18px; display: flex; justify-content: flex-end;">
+                  <button type="submit" class="btn btn-primary btn-sm"><i class="ti ti-device-floppy"></i> Save Leave Settings</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- === Payroll & Overtime Settings === -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="settings-card-icon" style="background: rgba(99,102,241,0.1); color: var(--primary);"><i class="ti ti-cash"></i></div>
+              <div class="settings-card-title-group">
+                <h3>Payroll & Overtime Rules</h3>
+                <p class="text-muted" style="font-size:12px;margin-top:2px;">Configure overtime rates, monthly work days, and auto lunch break deductions</p>
+              </div>
+            </div>
+
+            <div class="settings-card-body">
+              <form id="payroll-settings-form" onsubmit="savePayrollSettings(event)">
+                <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
+                  <div class="form-group" style="flex: 1;">
+                    <label class="form-label" style="font-size: 12px;">Monthly Work Days <span class="required">*</span></label>
+                    <input type="number" class="form-input" id="setting-payroll-workdays" value="${PAYROLL_SETTINGS.workDays}" min="1" max="31" required>
+                  </div>
+                  <div class="form-group" style="flex: 1;">
+                    <label class="form-label" style="font-size: 12px;">OT Rate Multiplier <span class="text-muted" style="font-size:10px;">(Optional)</span></label>
+                    <input type="number" class="form-input" id="setting-payroll-multiplier" value="${PAYROLL_SETTINGS.otMultiplier}" min="0.5" max="5.0" step="0.1" placeholder="Default: 1.5x">
+                  </div>
+                </div>
+
+                <div class="settings-toggle-row" style="padding: 12px 0 0 0; border-top: 1px solid var(--border); margin-top: 16px;">
+                  <div class="toggle-info">
+                    <span class="toggle-label" style="font-size: 13px;">Enable Overtime for Monthly Employees</span>
+                    <p class="toggle-desc text-muted" style="margin-top:2px; font-size:11.5px;">If enabled, monthly salaried employees earn daily overtime beyond expected hours.</p>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="setting-payroll-monthly-ot" ${PAYROLL_SETTINGS.monthlyOtEnabled ? 'checked' : ''}>
+                      <span class="slider round"></span>
+                  </label>
+                </div>
+
+                <div class="settings-toggle-row" style="padding: 12px 0 0 0; border-top: 1px solid var(--border); margin-top: 16px;">
+                  <div class="toggle-info">
+                    <span class="toggle-label" style="font-size: 13px;">Auto 1-Hour Lunch Break Deduction</span>
+                    <p class="toggle-desc text-muted" style="margin-top:2px; font-size:11.5px;">Deduct 1 hour from daily working hours if they exceed 5 hours.</p>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="setting-payroll-lunch-deduction" ${PAYROLL_SETTINGS.lunchBreakDeduction ? 'checked' : ''}>
+                      <span class="slider round"></span>
+                  </label>
+                </div>
+
+                <div style="margin-top: 18px; display: flex; justify-content: flex-end;">
+                  <button type="submit" class="btn btn-primary btn-sm"><i class="ti ti-device-floppy"></i> Save Payroll Rules</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="settings-card-icon"><i class="ti ti-lock"></i></div>
+              <div class="settings-card-title-group">
+                <h3>Change Password</h3>
+                <p class="text-muted" style="font-size:12px;margin-top:2px;">Update the admin login password for this portal</p>
+              </div>
+            </div>
+
+            <div class="settings-card-body">
+              <form id="change-password-form" onsubmit="handleChangePassword(event)">
+                <div class="form-group" style="margin-bottom: 12px;">
+                  <label class="form-label" style="font-size: 12px;">Current Password</label>
+                  <input type="password" class="form-input" id="setting-current-password" placeholder="Enter current password" required>
+                </div>
+                <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
+                  <div class="form-group" style="flex: 1;">
+                    <label class="form-label" style="font-size: 12px;">New Password</label>
+                    <input type="password" class="form-input" id="setting-new-password" placeholder="Enter new password (min 4 chars)" required minlength="4">
+                  </div>
+                  <div class="form-group" style="flex: 1;">
+                    <label class="form-label" style="font-size: 12px;">Confirm New Password</label>
+                    <input type="password" class="form-input" id="setting-confirm-password" placeholder="Re-enter new password" required minlength="4">
+                  </div>
+                </div>
+
+                <div class="settings-explainer disabled" style="margin-bottom: 14px;">
+                  <i class="ti ti-info-circle"></i>
+                  <div class="explainer-content">
+                    <strong>Password Policy</strong>
+                    <p style="font-size:12.5px;margin-top:2px;">
+                      Password must be at least 4 characters. After changing, you will need to use the new password for all future logins. Default password is <code>123456</code>.
+                    </p>
+                  </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end;">
+                  <button type="submit" class="btn btn-primary btn-sm"><i class="ti ti-key"></i> Update Password</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- === Holiday Calendar Settings === -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="settings-card-icon" style="background: rgba(20,184,166,0.1); color: var(--teal);"><i class="ti ti-calendar-event"></i></div>
+              <div class="settings-card-title-group">
+                <h3>Holiday Calendar</h3>
+                <p class="text-muted" style="font-size:12px;margin-top:2px;">Manage official public holidays. These are treated as paid leaves.</p>
+              </div>
+            </div>
+
+            <div class="settings-card-body">
+              <form id="add-holiday-form" onsubmit="addHoliday(event)" style="margin-bottom: 20px;">
+                <div class="form-row" style="display: flex; gap: 12px; align-items: flex-end;">
+                  <div class="form-group" style="flex: 2;">
+                    <label class="form-label" style="font-size: 12px;">Holiday Name</label>
+                    <input type="text" class="form-input" id="new-holiday-name" placeholder="e.g. Independence Day" required>
+                  </div>
+                  <div class="form-group" style="flex: 1.5;">
+                    <label class="form-label" style="font-size: 12px;">Date</label>
+                    <input type="date" class="form-input" id="new-holiday-date" required>
+                  </div>
+                  <div style="flex: 0.5;">
+                    <button type="submit" class="btn btn-primary" style="height: 38px; padding: 0 16px;"><i class="ti ti-plus"></i> Add</button>
+                  </div>
+                </div>
+              </form>
+
+              <div style="border-top: 1px solid var(--border); padding-top: 16px;">
+                <h4 style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary);">Active Holidays</h4>
+                <div id="holiday-list-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 4px;">
+                  <!-- Rendered dynamically -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      `;
       renderHolidayList();
     }
 
@@ -7964,10 +8501,10 @@
 
       if (holidaysList.length === 0) {
         container.innerHTML = `
-      <div class="text-muted text-sm" style="text-align:center; padding: 20px 0;">
-        No holidays configured yet.
-      </div>
-    `;
+        < div class="text-muted text-sm" style = "text-align:center; padding: 20px 0;" >
+          No holidays configured yet.
+      </div >
+        `;
         return;
       }
 
@@ -7975,7 +8512,7 @@
         const date = new Date(h.holiday_date);
         const dateStr = date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
         return `
-      <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r);">
+        < div style = "display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r);" >
         <div>
           <span style="font-weight: 600; font-size: 13px;">${h.name}</span>
           <span class="mono text-muted" style="font-size: 11px; margin-left: 8px;">${dateStr}</span>
@@ -7983,8 +8520,8 @@
         <button type="button" class="btn-icon danger" onclick="deleteHoliday(${h.id})" title="Delete Holiday">
           <i class="ti ti-trash"></i>
         </button>
-      </div>
-    `;
+      </div >
+        `;
       }).join('');
     }
 
@@ -7998,18 +8535,18 @@
       const date = dateEl.value;
 
       try {
-        await apiFetch(`${API_BASE_URL}/holidays`, {
-          method: 'POST',
-          body: { holiday_date: date, name }
-        });
-        nameEl.value = '';
-        dateEl.value = '';
-        showToast('Holiday added successfully', 'success');
-        await loadAllData();
-        renderHolidayList();
+        await apiFetch(`${ API_BASE_URL }/holidays`, {
+      method: 'POST',
+        body: { holiday_date: date, name }
+    });
+    nameEl.value = '';
+    dateEl.value = '';
+    showToast('Holiday added successfully', 'success');
+    await loadAllData();
+    renderHolidayList();
       } catch (err) {
-        showToast(err.message || 'Failed to add holiday', 'error');
-      }
+      showToast(err.message || 'Failed to add holiday', 'error');
+    }
     }
 
     async function deleteHoliday(id) {
