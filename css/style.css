@@ -1913,12 +1913,18 @@ tbody td {
 }
 
 /* --- Payslip Print Styles --- */
+@page {
+  size: auto;
+  margin: 0mm;
+}
 @media print {
   @page {
-    margin: 0;
+    size: auto;
+    margin: 0mm;
   }
-  body {
+  html, body {
     padding: 15mm !important;
+    margin: 0 !important;
     background: #fff !important;
   }
   body * {

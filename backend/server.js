@@ -1368,6 +1368,10 @@ app.get('/payslip/:id', async (req, res) => {
         <title>Payslip - ${empFormatted.firstName} ${empFormatted.lastName}</title>
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
+          @page {
+            size: auto;
+            margin: 0mm;
+          }
           :root {
             --primary: #6366f1;
             --primary-dark: #4f46e5;
@@ -1495,17 +1499,24 @@ app.get('/payslip/:id', async (req, res) => {
           }
           @media print {
             @page {
-              margin: 0;
+              size: auto;
+              margin: 0mm;
             }
-            body {
-              background: #fff;
-              padding: 15mm;
-              margin: 0;
+            html, body {
+              background: #fff !important;
+              padding: 15mm 20mm !important;
+              margin: 0 !important;
+              display: block !important;
+              min-height: 0 !important;
+              height: auto !important;
+              width: 100% !important;
             }
             .payslip-card {
-              border: none;
-              box-shadow: none;
-              padding: 0;
+              border: none !important;
+              box-shadow: none !important;
+              padding: 0 !important;
+              max-width: 100% !important;
+              width: 100% !important;
             }
             .btn-print {
               display: none !important;
