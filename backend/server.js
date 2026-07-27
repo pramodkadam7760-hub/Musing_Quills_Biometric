@@ -478,10 +478,67 @@ app.post('/api/employees/:id/pay', requireAdmin, async (req, res) => {
 });
 
 // ============================================================
+// SALARY PAYMENT HISTORY (Protected)
+// ============================================================
+
+// GET: Fetch all salary payment records
+app.get('/api/salary-payments', requireAdmin, async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM salary_payments ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[PAYROLL] Fetch payments error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT: Edit a salary payment record (HR mistake correction)
+app.put('/api/salary-payments/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const {
+    present_days, weekly_offs, holidays, absent_days,
+    base_salary, earnings, deductions, net_salary, revision_note
+  } = req.body;
+
+  if (!revision_note || !revision_note.trim()) {
+    return res.status(400).json({ error: 'A revision note is required when editing a payment record' });
+  }
+
+  try {
+    // Verify the record exists
+    const existing = await db.query('SELECT * FROM salary_payments WHERE id = ?', [id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ error: 'Salary payment record not found' });
+    }
+
+    // Update the record with new values, mark as Revised
+    await db.query(
+      `UPDATE salary_payments SET
+        present_days = ?, weekly_offs = ?, holidays = ?, absent_days = ?,
+        base_salary = ?, earnings = ?, deductions = ?, net_salary = ?,
+        status = 'Revised', revised_at = NOW(), revision_note = ?
+      WHERE id = ?`,
+      [
+        present_days, weekly_offs, holidays, absent_days,
+        base_salary, earnings, deductions, net_salary,
+        revision_note.trim(), id
+      ]
+    );
+
+    console.log(`[PAYROLL] Payment record #${id} revised. Note: ${revision_note.trim()}`);
+    res.json({ success: true, message: 'Salary payment record updated successfully' });
+  } catch (err) {
+    console.error('[PAYROLL] Edit payment error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
 // ATTENDANCE LOGS (Protected)
 // ============================================================
 
 app.get('/api/attendance', requireAdmin, async (req, res) => {
+
   try {
     const result = await db.query('SELECT * FROM attendance_logs ORDER BY timestamp DESC LIMIT 500');
     res.json(result.rows);
@@ -635,27 +692,73 @@ app.post('/api/hardware/log', async (req, res) => {
       `, [empId]);
       if (findRes.rows.length > 0) {
         empName = `${findRes.rows[0].first_name} ${findRes.rows[0].last_name}`;
-        const shiftStartStr = findRes.rows[0].shift_start ? findRes.rows[0].shift_start.slice(0, 5) : '09:00';
-        const [shiftH, shiftM] = shiftStartStr.split(':').map(Number);
-        const now = new Date();
-        const checkInMin = now.getHours() * 60 + now.getMinutes();
-        const shiftStartMin = shiftH * 60 + shiftM;
-        delayMinutes = checkInMin - shiftStartMin;
-        if (action.toUpperCase() === 'IN' && delayMinutes > 15) {
-          isLate = true;
-        }
+      }
+    }
+
+    let effectiveAction = action.toUpperCase();
+
+    // Check last attendance log for this employee to auto-close forgotten check-outs from previous days
+    const lastLogRes = await db.query(`
+      SELECT action, timestamp FROM attendance_logs 
+      WHERE employee_id = $1 
+      ORDER BY timestamp DESC 
+      LIMIT 1
+    `, [empId]);
+
+    if (lastLogRes.rows.length > 0) {
+      const lastLog = lastLogRes.rows[0];
+      const lastLogDate = new Date(lastLog.timestamp);
+      const lastLogDateStr = lastLogDate.getFullYear() + '-' +
+        String(lastLogDate.getMonth() + 1).padStart(2, '0') + '-' +
+        String(lastLogDate.getDate()).padStart(2, '0');
+      const now = new Date();
+      const todayDateStr = now.getFullYear() + '-' +
+        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0');
+
+      // If last action was IN on a PREVIOUS day and no OUT was recorded:
+      if (lastLog.action === 'IN' && lastLogDateStr < todayDateStr) {
+        const isSaturday = (lastLogDate.getDay() === 6);
+        const shiftDurationHours = isSaturday ? 4.0 : 8.0;
+
+        const autoOutTime = new Date(lastLog.timestamp);
+        autoOutTime.setTime(new Date(lastLog.timestamp).getTime() + shiftDurationHours * 3600 * 1000);
+
+        await db.query(`
+          INSERT INTO attendance_logs (employee_id, employee_name, timestamp, action, device)
+          VALUES ($1, $2, $3, 'OUT', 'AUTO_CHECKOUT')
+        `, [empId, empName || 'UNKNOWN', autoOutTime]);
+
+        console.log(`[HARDWARE] Auto-closed missing checkout for ${empId} on ${lastLogDateStr} (${shiftDurationHours}h shift)`);
+
+        // Today is a NEW day — employee is arriving in the morning, so force Check-In (IN)
+        effectiveAction = 'IN';
+      }
+    }
+
+    if (effectiveAction === 'IN') {
+      const empDetails = await db.query(`SELECT shift_start FROM employees WHERE id = $1 LIMIT 1`, [empId]);
+      const shiftStartStr = (empDetails.rows.length > 0 && empDetails.rows[0].shift_start) ? empDetails.rows[0].shift_start.slice(0, 5) : '09:00';
+      const [shiftH, shiftM] = shiftStartStr.split(':').map(Number);
+      const now = new Date();
+      const checkInMin = now.getHours() * 60 + now.getMinutes();
+      const shiftStartMin = shiftH * 60 + shiftM;
+      delayMinutes = checkInMin - shiftStartMin;
+      if (delayMinutes > 15) {
+        isLate = true;
       }
     }
 
     await db.query(`
       INSERT INTO attendance_logs (employee_id, employee_name, action, device)
       VALUES ($1, $2, $3, $4)
-    `, [empId, empName || 'UNKNOWN', action.toUpperCase(), device || 'GATE_1']);
+    `, [empId, empName || 'UNKNOWN', effectiveAction, device || 'GATE_1']);
 
-    console.log(`[HARDWARE] ${action.toUpperCase()} logged for ${empId} via ${device || 'GATE_1'} (Late: ${isLate}, Delay: ${delayMinutes} mins)`);
+    console.log(`[HARDWARE] ${effectiveAction} logged for ${empId} via ${device || 'GATE_1'} (Late: ${isLate}, Delay: ${delayMinutes} mins)`);
     res.status(201).json({
       success: true,
-      message: isLate ? 'Attendance logged (LATE)' : 'Attendance log recorded',
+      action: effectiveAction,
+      message: effectiveAction === 'IN' ? (isLate ? 'Attendance logged (LATE)' : 'Attendance log recorded') : 'Check-out recorded',
       late: isLate,
       delay: delayMinutes
     });

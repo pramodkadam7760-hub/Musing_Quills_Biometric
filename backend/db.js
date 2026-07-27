@@ -158,10 +158,26 @@ const initializeDb = async () => {
         deductions DECIMAL(12, 2) NOT NULL,
         net_salary DECIMAL(12, 2) NOT NULL,
         status VARCHAR(20) DEFAULT 'Paid',
+        revised_at TIMESTAMP NULL,
+        revision_note TEXT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
       )
     `);
+
+    // Ensure revised_at and revision_note columns exist (migration for existing tables)
+    try {
+      await pool.query('ALTER TABLE salary_payments ADD COLUMN revised_at TIMESTAMP NULL');
+      console.log('[DB] Added salary_payments.revised_at column.');
+    } catch (colErr) {
+      // Column already exists
+    }
+    try {
+      await pool.query('ALTER TABLE salary_payments ADD COLUMN revision_note TEXT NULL');
+      console.log('[DB] Added salary_payments.revision_note column.');
+    } catch (colErr) {
+      // Column already exists
+    }
 
     // Seed default admin if table is empty
     const [adminRows] = await pool.query('SELECT COUNT(*) AS count FROM admin_credentials');

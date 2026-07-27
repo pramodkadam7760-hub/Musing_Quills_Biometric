@@ -2586,4 +2586,164 @@ input:checked + .slider:before {
 
 /* --- Lifecycle Timeline Customizations (overridden above) --- */
 
+/* ===== Payment History Styles ===== */
+.payment-history-section {
+  margin-top: 40px;
+}
+
+.payment-history-table-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+}
+
+.payment-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.payment-history-table thead th {
+  background: var(--hover-bg, #f1f5f9);
+  padding: 12px 14px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.payment-history-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s ease;
+}
+
+.payment-history-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.payment-history-table tbody tr:hover {
+  background: var(--hover-bg, #f8fafc);
+}
+
+.payment-history-table tbody td {
+  padding: 12px 14px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.ph-emp-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.ph-emp-id {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Status Chips */
+.chip-paid {
+  background: #dcfce7;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  display: inline-block;
+}
+
+.chip-revised {
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  display: inline-block;
+}
+
+.revised-info {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: help;
+}
+
+/* Empty State */
+.payment-history-empty {
+  text-align: center;
+  padding: 60px 20px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Edit Payment Modal Grid */
+.edit-payment-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.edit-payment-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.edit-payment-group input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 36px;
+  border-radius: 6px;
+  padding: 0 10px;
+}
+
+/* Auto / Manual Badge */
+.edit-net-auto-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #dcfce7;
+  color: #166534;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.edit-net-auto-badge.manual {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+/* Spinner for loading */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive: stack table on mobile */
+@media (max-width: 768px) {
+  .edit-payment-grid {
+    grid-template-columns: 1fr;
+  }
+  .payment-history-table-wrap {
+    font-size: 12px;
+  }
+}
 

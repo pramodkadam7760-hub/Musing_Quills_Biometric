@@ -1,5 +1,7 @@
 /* ===== Salary Breakdown View (Basic Pay + Late Penalty) ===== */
 
+let salaryPaymentRecords = [];
+
 function renderSalary(container) {
   let totalPayroll = 0, totalNet = 0, totalDeductions = 0, totalLatePenalties = 0;
   const salaryData = employees.map(emp => {
@@ -91,7 +93,26 @@ function renderSalary(container) {
     <div class="salary-grid">
       ${salaryData.map(({ emp, salary }) => renderSalaryCard(emp, salary)).join('')}
     </div>
+
+    <!-- Payment History Section -->
+    <div class="payment-history-section" style="margin-top: 40px;">
+      <div class="view-header" style="margin-bottom: 16px;">
+        <div class="view-header-left">
+          <h2><i class="ti ti-history" style="margin-right: 8px;"></i>Payment History</h2>
+          <p>Records of all salary payments made</p>
+        </div>
+      </div>
+      <div id="payment-history-container">
+        <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+          <i class="ti ti-loader" style="font-size: 24px; animation: spin 1s linear infinite;"></i>
+          <p>Loading payment history...</p>
+        </div>
+      </div>
+    </div>
   `;
+
+  // Load payment history from API
+  loadPaymentHistory();
 }
 
 function renderSalaryCard(emp, s) {
@@ -208,6 +229,249 @@ function renderSalaryCard(emp, s) {
       </div>
     </div>
   `;
+}
+
+// ===== Payment History =====
+async function loadPaymentHistory() {
+  const container = document.getElementById('payment-history-container');
+  if (!container) return;
+
+  try {
+    salaryPaymentRecords = await apiFetch(`${API_BASE_URL}/salary-payments`);
+
+    if (!salaryPaymentRecords || salaryPaymentRecords.length === 0) {
+      container.innerHTML = `
+        <div class="payment-history-empty">
+          <i class="ti ti-receipt-off" style="font-size: 48px; color: var(--text-muted); margin-bottom: 12px;"></i>
+          <p style="color: var(--text-muted); font-size: 14px;">No salary payments recorded yet.</p>
+          <p style="color: var(--text-muted); font-size: 12px;">Payment records will appear here once you pay an employee's salary.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="payment-history-table-wrap">
+        <table class="payment-history-table">
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Period</th>
+              <th>Days Present</th>
+              <th>Base Salary</th>
+              <th>Earnings</th>
+              <th>Deductions</th>
+              <th>Net Salary</th>
+              <th>Status</th>
+              <th>Paid On</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${salaryPaymentRecords.map(rec => {
+              const isRevised = rec.status === 'Revised';
+              const statusClass = isRevised ? 'chip-revised' : 'chip-paid';
+              const revisedInfo = isRevised && rec.revised_at
+                ? `<div class="revised-info" title="${(rec.revision_note || '').replace(/"/g, '&quot;')}">
+                     <i class="ti ti-pencil" style="font-size: 11px;"></i>
+                     Revised ${new Date(rec.revised_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                   </div>`
+                : '';
+              const paymentDate = rec.payment_date ? new Date(rec.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+              const startDate = rec.start_date ? new Date(rec.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—';
+              const endDate = rec.end_date ? new Date(rec.end_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—';
+
+              return `
+                <tr>
+                  <td>
+                    <div class="ph-emp-name">${rec.employee_name || 'Employee'}</div>
+                    <div class="ph-emp-id">${rec.employee_id}</div>
+                  </td>
+                  <td>${startDate} — ${endDate}</td>
+                  <td>${parseFloat(rec.present_days || 0)}</td>
+                  <td>${formatCurrency(parseFloat(rec.base_salary || 0))}</td>
+                  <td>${formatCurrency(parseFloat(rec.earnings || 0))}</td>
+                  <td style="color: var(--danger);">−${formatCurrency(parseFloat(rec.deductions || 0))}</td>
+                  <td><strong>${formatCurrency(parseFloat(rec.net_salary || 0))}</strong></td>
+                  <td>
+                    <span class="chip ${statusClass}">${rec.status}</span>
+                    ${revisedInfo}
+                  </td>
+                  <td>${paymentDate}</td>
+                  <td>
+                    <button class="btn btn-ghost btn-sm" onclick="openEditPaymentModal(${rec.id})" title="Edit Payment Record" style="color: var(--primary);">
+                      <i class="ti ti-edit"></i>
+                    </button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `
+      <div class="payment-history-empty">
+        <i class="ti ti-alert-circle" style="font-size: 48px; color: var(--danger); margin-bottom: 12px;"></i>
+        <p style="color: var(--danger); font-size: 14px;">Failed to load payment history.</p>
+        <p style="color: var(--text-muted); font-size: 12px;">${err.message || 'Unknown error'}</p>
+      </div>
+    `;
+  }
+}
+
+// ===== Edit Payment Modal =====
+function openEditPaymentModal(paymentId) {
+  const rec = salaryPaymentRecords.find(r => r.id === paymentId);
+  if (!rec) {
+    showToast('Payment record not found', 'error');
+    return;
+  }
+
+  const presentDays = parseFloat(rec.present_days || 0);
+  const weeklyOffs = parseInt(rec.weekly_offs || 0);
+  const holidays = parseInt(rec.holidays || 0);
+  const absentDays = parseFloat(rec.absent_days || 0);
+  const baseSalary = parseFloat(rec.base_salary || 0);
+  const earnings = parseFloat(rec.earnings || 0);
+  const deductions = parseFloat(rec.deductions || 0);
+  const netSalary = parseFloat(rec.net_salary || 0);
+
+  openModal(`
+    <div class="modal-card" style="max-width: 560px; padding: 28px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div>
+          <h3 style="margin: 0; font-size: 20px; font-weight: 700; color: var(--text);">
+            <i class="ti ti-edit" style="margin-right: 6px; color: var(--primary);"></i>Edit Payment Record
+          </h3>
+          <p style="color: var(--text-muted); font-size: 13px; margin: 4px 0 0;">
+            ${rec.employee_name} • ID: ${rec.employee_id}
+          </p>
+        </div>
+        <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+      </div>
+
+      ${rec.status === 'Revised' && rec.revision_note ? `
+        <div style="background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 12px; color: #92400e;">
+          <i class="ti ti-info-circle" style="margin-right: 4px;"></i>
+          <strong>Previous revision:</strong> ${rec.revision_note}
+        </div>
+      ` : ''}
+
+      <div class="edit-payment-grid">
+        <div class="edit-payment-group">
+          <label>Present Days</label>
+          <input type="number" id="edit-present-days" class="form-control" value="${presentDays}" step="0.5" min="0" oninput="recalcEditPayment()">
+        </div>
+        <div class="edit-payment-group">
+          <label>Absent Days</label>
+          <input type="number" id="edit-absent-days" class="form-control" value="${absentDays}" step="0.5" min="0" oninput="recalcEditPayment()">
+        </div>
+        <div class="edit-payment-group">
+          <label>Weekly Offs</label>
+          <input type="number" id="edit-weekly-offs" class="form-control" value="${weeklyOffs}" step="1" min="0" oninput="recalcEditPayment()">
+        </div>
+        <div class="edit-payment-group">
+          <label>Holidays</label>
+          <input type="number" id="edit-holidays" class="form-control" value="${holidays}" step="1" min="0" oninput="recalcEditPayment()">
+        </div>
+      </div>
+
+      <div style="border-top: 1px solid var(--border, #e2e8f0); margin: 16px 0; padding-top: 16px;">
+        <div class="edit-payment-grid">
+          <div class="edit-payment-group">
+            <label>Base Salary (₹)</label>
+            <input type="number" id="edit-base-salary" class="form-control" value="${baseSalary}" step="1" min="0" oninput="recalcEditPayment()">
+          </div>
+          <div class="edit-payment-group">
+            <label>Earnings (₹)</label>
+            <input type="number" id="edit-earnings" class="form-control" value="${earnings}" step="1" min="0" oninput="recalcEditPayment()">
+          </div>
+          <div class="edit-payment-group">
+            <label>Deductions (₹)</label>
+            <input type="number" id="edit-deductions" class="form-control" value="${deductions}" step="1" min="0" oninput="recalcEditPayment()">
+          </div>
+          <div class="edit-payment-group">
+            <label style="display: flex; align-items: center; gap: 6px;">
+              Net Salary (₹)
+              <span class="edit-net-auto-badge" id="edit-net-badge">Auto</span>
+            </label>
+            <input type="number" id="edit-net-salary" class="form-control" value="${netSalary}" step="1" min="0" oninput="onNetSalaryManualEdit()">
+          </div>
+        </div>
+      </div>
+
+      <div style="margin: 16px 0;">
+        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text);">
+          Revision Note <span style="color: var(--danger);">*</span>
+        </label>
+        <textarea id="edit-revision-note" class="form-control" rows="2" placeholder="e.g. Corrected absent days from 5 to 3" style="width: 100%; box-sizing: border-box; resize: vertical; padding: 10px; border-radius: 6px;"></textarea>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitEditPayment(${paymentId})">
+          <i class="ti ti-check" style="margin-right: 4px;"></i>Save Changes
+        </button>
+      </div>
+    </div>
+  `);
+
+  // Initialize auto-calc state
+  window._editNetManualOverride = false;
+}
+
+// Auto-recalculate net salary when fields change
+function recalcEditPayment() {
+  if (window._editNetManualOverride) return;
+  const earnings = parseFloat(document.getElementById('edit-earnings').value) || 0;
+  const deductions = parseFloat(document.getElementById('edit-deductions').value) || 0;
+  const net = Math.max(0, earnings - deductions);
+  document.getElementById('edit-net-salary').value = Math.round(net);
+}
+
+// When user manually edits net salary, switch to manual mode
+function onNetSalaryManualEdit() {
+  window._editNetManualOverride = true;
+  const badge = document.getElementById('edit-net-badge');
+  if (badge) {
+    badge.textContent = 'Manual';
+    badge.classList.add('manual');
+  }
+}
+
+// Submit edited payment
+async function submitEditPayment(paymentId) {
+  const revision_note = document.getElementById('edit-revision-note').value;
+  if (!revision_note || !revision_note.trim()) {
+    showToast('Please enter a revision note explaining the change', 'error');
+    return;
+  }
+
+  const payload = {
+    present_days: parseFloat(document.getElementById('edit-present-days').value) || 0,
+    absent_days: parseFloat(document.getElementById('edit-absent-days').value) || 0,
+    weekly_offs: parseInt(document.getElementById('edit-weekly-offs').value) || 0,
+    holidays: parseInt(document.getElementById('edit-holidays').value) || 0,
+    base_salary: parseFloat(document.getElementById('edit-base-salary').value) || 0,
+    earnings: parseFloat(document.getElementById('edit-earnings').value) || 0,
+    deductions: parseFloat(document.getElementById('edit-deductions').value) || 0,
+    net_salary: parseFloat(document.getElementById('edit-net-salary').value) || 0,
+    revision_note: revision_note.trim()
+  };
+
+  try {
+    const res = await apiFetch(`${API_BASE_URL}/salary-payments/${paymentId}`, {
+      method: 'PUT',
+      body: payload
+    });
+    showToast(res.message || 'Payment record updated', 'success');
+    closeModal();
+    loadPaymentHistory();
+  } catch (err) {
+    showToast(err.message || 'Failed to update payment record', 'error');
+  }
 }
 
 // ===== Print Payslip =====
