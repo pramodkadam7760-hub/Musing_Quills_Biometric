@@ -1150,11 +1150,12 @@ app.post('/api/admin/reset-database', requireAdmin, async (req, res) => {
 app.get('/payslip/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const empRes = await db.query('SELECT * FROM employees WHERE id = $1', [id]);
+    const empRes = await db.query('SELECT * FROM employees WHERE id = $1 OR employee_id = $2', [id, id]);
     if (empRes.rows.length === 0) {
       return res.status(404).send('Employee not found');
     }
     const emp = empRes.rows[0];
+
 
     // Fetch logs
     const logRes = await db.query('SELECT * FROM attendance_logs WHERE employee_id = $1', [id]);
