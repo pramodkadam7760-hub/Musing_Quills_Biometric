@@ -1289,51 +1289,74 @@ app.get('/payslip/:id', async (req, res) => {
     const hours = attendanceHistory.reduce((s, r) => s + (r.hours || 0), 0);
     const md = { days, hours };
 
-    const WORK_DAYS = 26;
-    const absentDays = attendanceHistory.filter(r => r.status === 'Absent' && r.date !== todayStr).length;
-    const halfDaysForLeaves = attendanceHistory.filter(r => r.status === 'Half Day' && r.date !== todayStr).length;
-    const totalLeavesTaken = (empFormatted.leavesTaken || 0) + absentDays + (halfDaysForLeaves * 0.5);
-
-    const paidAllowance = parseFloat(LEAVE_SETTINGS.monthlyLimit || 2.5);
-    const paidLeaves = Math.min(totalLeavesTaken, paidAllowance);
-    const paidDays = Math.min(WORK_DAYS, md.days + paidLeaves);
+    // Check if a payment record exists in salary_payments table (including revised payments)
+    const payRecordRes = await db.query(
+      'SELECT * FROM salary_payments WHERE employee_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [id]
+    );
 
     let basicPay = 0;
-    if (empFormatted.salaryType === 'monthly') {
-      basicPay = Math.round((empFormatted.monthlyRate / WORK_DAYS) * paidDays);
-    } else {
-      basicPay = Math.round(md.hours * empFormatted.hourlyRate);
-    }
+    let totalEarnings = 0;
+    let totalDeductions = 0;
+    let netPay = 0;
+    let displayDaysPresent = 0;
+    let currentMonth = now.toLocaleString('default', { month: 'long', year: 'numeric' });
 
-    let lateCount = 0;
-    datesList.forEach(({ dateStr }) => {
-      const dayLogs = grouped[dateStr];
-      if (dayLogs) {
-        const checkIn = dayLogs.find(l => l.action === 'IN');
-        if (checkIn && checkIn.device !== 'WFH_DASHBOARD') {
-          const [linH, linM] = checkIn.timeStr.split(':').map(Number);
-          const [sH, sM] = empFormatted.shiftStart.split(':').map(Number);
-          const loginMin = linH * 60 + linM;
-          const shiftMin = sH * 60 + sM;
-          if (loginMin > shiftMin + 15) {
-            lateCount++;
+    if (payRecordRes.rowCount > 0) {
+      const rec = payRecordRes.rows[0];
+      basicPay = parseFloat(rec.base_salary || 0);
+      totalEarnings = parseFloat(rec.earnings || 0);
+      totalDeductions = parseFloat(rec.deductions || 0);
+      netPay = parseFloat(rec.net_salary || 0);
+      displayDaysPresent = parseFloat(rec.present_days || 0);
+      if (rec.payment_date) {
+        const pDate = new Date(rec.payment_date);
+        currentMonth = pDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+      }
+    } else {
+      const WORK_DAYS = 26;
+      const absentDays = attendanceHistory.filter(r => r.status === 'Absent' && r.date !== todayStr).length;
+      const halfDaysForLeaves = attendanceHistory.filter(r => r.status === 'Half Day' && r.date !== todayStr).length;
+      const totalLeavesTaken = (empFormatted.leavesTaken || 0) + absentDays + (halfDaysForLeaves * 0.5);
+
+      const paidAllowance = parseFloat(LEAVE_SETTINGS.monthlyLimit || 2.5);
+      const paidLeaves = Math.min(totalLeavesTaken, paidAllowance);
+      const paidDays = Math.min(WORK_DAYS, md.days + paidLeaves);
+
+      if (empFormatted.salaryType === 'monthly') {
+        basicPay = Math.round((empFormatted.monthlyRate / WORK_DAYS) * paidDays);
+      } else {
+        basicPay = Math.round(md.hours * empFormatted.hourlyRate);
+      }
+
+      let lateCount = 0;
+      datesList.forEach(({ dateStr }) => {
+        const dayLogs = grouped[dateStr];
+        if (dayLogs) {
+          const checkIn = dayLogs.find(l => l.action === 'IN');
+          if (checkIn && checkIn.device !== 'WFH_DASHBOARD') {
+            const [linH, linM] = checkIn.timeStr.split(':').map(Number);
+            const [sH, sM] = empFormatted.shiftStart.split(':').map(Number);
+            const loginMin = linH * 60 + linM;
+            const shiftMin = sH * 60 + sM;
+            if (loginMin > shiftMin + 15) {
+              lateCount++;
+            }
           }
         }
-      }
-    });
+      });
 
-    const penaltyPerLate = 100;
-    const habitualThreshold = 3;
-    const latePenalty = lateCount >= habitualThreshold ? (lateCount * penaltyPerLate) : 0;
-    const unpaidLeaveDeduction = empFormatted.salaryType === 'monthly' && totalLeavesTaken > paidAllowance
-      ? Math.round((totalLeavesTaken - paidAllowance) * (empFormatted.monthlyRate / WORK_DAYS))
-      : 0;
-
-    const totalDeductions = latePenalty;
-    const netPay = Math.max(0, basicPay - totalDeductions);
+      const penaltyPerLate = 100;
+      const habitualThreshold = 3;
+      const latePenalty = lateCount >= habitualThreshold ? (lateCount * penaltyPerLate) : 0;
+      totalDeductions = latePenalty;
+      totalEarnings = basicPay;
+      netPay = Math.max(0, basicPay - totalDeductions);
+      displayDaysPresent = md.days;
+    }
 
     const fmt = (val) => '₹' + Number(val).toLocaleString('en-IN');
-    const currentMonth = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+
 
     res.send(`
       <!DOCTYPE html>
@@ -1497,8 +1520,8 @@ app.get('/payslip/:id', async (req, res) => {
             <div class="meta-item"><strong>Employee ID</strong><span>${empFormatted.id}</span></div>
             <div class="meta-item"><strong>Department</strong><span>${empFormatted.department}</span></div>
             <div class="meta-item"><strong>Designation</strong><span>${empFormatted.designation || 'Staff'}</span></div>
-            <div class="meta-item"><strong>Days Worked</strong><span>${md.days} / 26 days</span></div>
-            <div class="meta-item"><strong>Leaves Taken</strong><span>${totalLeavesTaken} days</span></div>
+            <div class="meta-item"><strong>Days Worked</strong><span>${displayDaysPresent} / 26 days</span></div>
+            <div class="meta-item"><strong>Payment Status</strong><span style="color: var(--success);">Paid</span></div>
           </div>
           
           <table class="payslip-table">
@@ -1512,25 +1535,20 @@ app.get('/payslip/:id', async (req, res) => {
             </thead>
             <tbody>
               <tr>
-                <td>Basic Pay</td>
-                <td>${fmt(basicPay)}</td>
-                <td>Unpaid Leaves (LOP)</td>
-                <td>${fmt(unpaidLeaveDeduction)}</td>
-              </tr>
-              <tr>
-                <td>Overtime Bonus</td>
-                <td>${fmt(0)}</td>
-                <td>Late Penalty (${lateCount} times)</td>
-                <td>${fmt(latePenalty)}</td>
+                <td>Basic / Earnings</td>
+                <td>${fmt(totalEarnings)}</td>
+                <td>Total Deductions</td>
+                <td>${fmt(totalDeductions)}</td>
               </tr>
               <tr class="total-row">
-                <td>Total Gross</td>
-                <td>${fmt(basicPay)}</td>
+                <td>Total Gross Earnings</td>
+                <td>${fmt(totalEarnings)}</td>
                 <td>Total Deductions</td>
                 <td>${fmt(totalDeductions)}</td>
               </tr>
             </tbody>
           </table>
+
           
           <div class="net-pay">
             Net Payable Salary: ${fmt(netPay)}
