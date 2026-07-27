@@ -3381,13 +3381,26 @@
   to { transform: rotate(360deg); }
 }
 
-/* Responsive: stack table on mobile */
-@media (max-width: 768px) {
-  .edit-payment-grid {
-    grid-template-columns: 1fr;
+/* --- Payslip Print Styles --- */
+@media print {
+  @page {
+    margin: 0;
   }
-  .payment-history-table-wrap {
-    font-size: 12px;
+  body {
+    padding: 15mm !important;
+    background: #fff !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #print-area, #print-area * {
+    visibility: visible;
+  }
+  #print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
   }
 }
   </style>
@@ -6888,7 +6901,7 @@
         <h3>Net Salary: ${formatCurrency(parseFloat(rec.net_salary || 0))}</h3>
       </div>
       <div class="payslip-footer">
-        <p>This is a computer-generated document. No signature is required.</p>
+        <p>This is a computer-generated payslip.</p>
       </div>
     </div>
   `;
@@ -7153,7 +7166,7 @@
         <h3>Net Salary: ${formatCurrency(s.net)}</h3>
       </div>
       <div class="payslip-footer">
-        <p>This is a computer-generated document. No signature is required.</p>
+        <p>This is a computer-generated payslip.</p>
       </div>
     </div>
   `;
@@ -7431,7 +7444,7 @@
         <h3>Net Salary: ${formatCurrency(s.net)}</h3>
       </div>
       <div class="payslip-footer">
-        <p>This is a computer-generated document. No signature is required.</p>
+        <p>This is a computer-generated payslip.</p>
       </div>
     </div>
   `;
@@ -8257,9 +8270,9 @@
     function exportReportPDF() {
       const printWindow = window.open('', '_blank');
       const content = document.getElementById('report-content').innerHTML;
-      printWindow.document.write(`< !DOCTYPE html > <html><head><title>FingerTrack Report — ${getCurrentMonth()}</title>
-        <style>*{margin:0;padding:0;box-sizing:border-box}body{font - family:'Segoe UI',sans-serif;padding:30px;color:#1a1a2e;font-size:12px}h1{font - size:20px;margin-bottom:4px}.subtitle{color:#666;margin-bottom:20px;font-size:13px}table{width:100%;border-collapse:collapse;margin:10px 0}th{background:#f4f4f8;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#666;border-bottom:2px solid #e0e0e0}td{padding:8px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even){background:#fafafa}.chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600}.stat-grid,.stat-card,.compliance-grid,.compliance-card,.weekly-summary-card,.weekly-summary-grid,.weekly-metric,.report-tabs{display:none!important}.table-panel{border:1px solid #e0e0e0;border-radius:8px;margin:10px 0;overflow:hidden}.table-panel-header{padding:10px;border-bottom:1px solid #e0e0e0;font-weight:700;font-size:13px;background:#f4f4f8}.footer{margin - top:30px;padding-top:14px;border-top:1px solid #e0e0e0;font-size:10px;color:#999;text-align:center}@media print{body{padding:15px}}</style>
-      </head><body><h1>FingerTrack Enterprise — Report</h1><div class="subtitle">${getCurrentMonth()} • ${activeReportTab.charAt(0).toUpperCase() + activeReportTab.slice(1)} Report</div>${content}<div class="footer">FingerTrack Enterprise v1.0 • Cubic Code • Confidential</div><script>window.onload=()=>{window.print()}<\/script></body></html>`);
+      printWindow.document.write(`<!DOCTYPE html><html><head><title>Attendance Report — ${getCurrentMonth()}</title>
+        <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',sans-serif;padding:30px;color:#1a1a2e;font-size:12px}h1{font-size:20px;margin-bottom:4px}.subtitle{color:#666;margin-bottom:20px;font-size:13px}table{width:100%;border-collapse:collapse;margin:10px 0}th{background:#f4f4f8;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#666;border-bottom:2px solid #e0e0e0}td{padding:8px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even){background:#fafafa}.chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600}.stat-grid,.stat-card,.compliance-grid,.compliance-card,.weekly-summary-card,.weekly-summary-grid,.weekly-metric,.report-tabs{display:none!important}.table-panel{border:1px solid #e0e0e0;border-radius:8px;margin:10px 0;overflow:hidden}.table-panel-header{padding:10px;border-bottom:1px solid #e0e0e0;font-weight:700;font-size:13px;background:#f4f4f8}.footer{margin-top:30px;padding-top:14px;border-top:1px solid #e0e0e0;font-size:10px;color:#999;text-align:center}@media print{@page{margin:0}body{padding:15mm}}</style>
+      </head><body><h1>Attendance Report</h1><div class="subtitle">${getCurrentMonth()} • ${activeReportTab.charAt(0).toUpperCase() + activeReportTab.slice(1)} Report</div>${content}<div class="footer">Cubic Code • Confidential</div><script>window.onload=()=>{window.print()}<\/script></body></html>`);
       printWindow.document.close();
       showToast('PDF report opened in print dialog', 'success');
     }

@@ -1914,6 +1914,13 @@ tbody td {
 
 /* --- Payslip Print Styles --- */
 @media print {
+  @page {
+    margin: 0;
+  }
+  body {
+    padding: 15mm !important;
+    background: #fff !important;
+  }
   body * {
     visibility: hidden;
   }

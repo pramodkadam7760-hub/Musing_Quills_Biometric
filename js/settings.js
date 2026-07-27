@@ -228,10 +228,63 @@ function renderSettings(container) {
         </div>
       </div>
 
+      <!-- === Payroll & Overtime Settings === -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon" style="background: rgba(99,102,241,0.1); color: var(--primary);"><i class="ti ti-cash"></i></div>
+          <div class="settings-card-title-group">
+            <h3>Payroll & Overtime Rules</h3>
+            <p class="text-muted" style="font-size:12px;margin-top:2px;">Configure overtime rates, monthly work days, and auto lunch break deductions</p>
+          </div>
+        </div>
+
+        <div class="settings-card-body">
+          <form id="payroll-settings-form" onsubmit="savePayrollSettings(event)">
+            <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label" style="font-size: 12px;">Monthly Work Days <span class="required">*</span></label>
+                <input type="number" class="form-input" id="setting-payroll-workdays" value="${PAYROLL_SETTINGS.workDays}" min="1" max="31" required>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label" style="font-size: 12px;">OT Rate Multiplier <span class="text-muted" style="font-size:10px;">(Optional)</span></label>
+                <input type="number" class="form-input" id="setting-payroll-multiplier" value="${PAYROLL_SETTINGS.otMultiplier}" min="0.5" max="5.0" step="0.1" placeholder="Default: 1.5x">
+              </div>
+            </div>
+
+            <div class="settings-toggle-row" style="padding: 12px 0 0 0; border-top: 1px solid var(--border); margin-top: 16px;">
+              <div class="toggle-info">
+                <span class="toggle-label" style="font-size: 13px;">Enable Overtime for Monthly Employees</span>
+                <p class="toggle-desc text-muted" style="margin-top:2px; font-size:11.5px;">If enabled, monthly salaried employees earn daily overtime beyond expected hours.</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="setting-payroll-monthly-ot" ${PAYROLL_SETTINGS.monthlyOtEnabled ? 'checked' : ''}>
+                <span class="slider round"></span>
+              </label>
+            </div>
+
+            <div class="settings-toggle-row" style="padding: 12px 0 0 0; border-top: 1px solid var(--border); margin-top: 16px;">
+              <div class="toggle-info">
+                <span class="toggle-label" style="font-size: 13px;">Auto 1-Hour Lunch Break Deduction</span>
+                <p class="toggle-desc text-muted" style="margin-top:2px; font-size:11.5px;">Deduct 1 hour from daily working hours if they exceed 5 hours.</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="setting-payroll-lunch-deduction" ${PAYROLL_SETTINGS.lunchBreakDeduction ? 'checked' : ''}>
+                <span class="slider round"></span>
+              </label>
+            </div>
+
+            <div style="margin-top: 18px; display: flex; justify-content: flex-end;">
+              <button type="submit" class="btn btn-primary btn-sm"><i class="ti ti-device-floppy"></i> Save Payroll Rules</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
     </div>
   `;
   renderHolidayList();
 }
+
 
 function renderHolidayList() {
   const container = document.getElementById('holiday-list-container');
@@ -416,4 +469,36 @@ async function handleChangePassword(event) {
     document.getElementById('setting-new-password').value = '';
     document.getElementById('setting-confirm-password').value = '';
   }
+}
+
+function savePayrollSettings(event) {
+  event.preventDefault();
+
+  const workDays = parseInt(document.getElementById('setting-payroll-workdays').value) || 26;
+  const otMultiplier = parseFloat(document.getElementById('setting-payroll-multiplier').value) || 1.5;
+  const monthlyOtEnabled = document.getElementById('setting-payroll-monthly-ot').checked;
+  const lunchBreakDeduction = document.getElementById('setting-payroll-lunch-deduction').checked;
+
+  PAYROLL_SETTINGS = {
+    workDays,
+    otMultiplier,
+    monthlyOtEnabled,
+    lunchBreakDeduction
+  };
+
+  localStorage.setItem('PAYROLL_SETTINGS', JSON.stringify(PAYROLL_SETTINGS));
+
+  // Reload and re-calculate all data from logs
+  loadAllData().then(() => {
+    showToast('Payroll & Overtime settings saved successfully', 'success');
+    logAuditAction('Update Payroll Settings', `Updated Work Days: ${workDays}, OT Multiplier: ${otMultiplier}`);
+    // Re-render
+    const container = document.getElementById('app');
+    if (container) {
+      renderSettings(container);
+    }
+  }).catch(err => {
+    console.error('Failed to reload data after saving settings:', err);
+    showToast('Settings saved, but failed to reload payroll data', 'warning');
+  });
 }

@@ -170,6 +170,29 @@ function renderReportSection(tabId) {
 // ===== 1. ATTENDANCE SUMMARY =====
 function renderAttendanceSummary() {
   const filteredEmps = getFilteredEmployees();
+  const todayStr = getTodayStr();
+
+  // Target date defaults to today, or end date of filter if selected
+  let targetDateStr = todayStr;
+  if (reportFilterEndDate && reportFilterEndDate <= todayStr) {
+    targetDateStr = reportFilterEndDate;
+  }
+  if (reportFilterStartDate && reportFilterStartDate === reportFilterEndDate) {
+    targetDateStr = reportFilterStartDate;
+  }
+
+  // Check if target date is Sunday (day 0) or listed in holidaysList
+  const targetDateObj = new Date(targetDateStr + 'T00:00:00');
+  const isSunday = targetDateObj.getDay() === 0;
+  const isPublicHoliday = typeof holidaysList !== 'undefined' && holidaysList.some(h => {
+    if (!h.holiday_date) return false;
+    const hDateStr = h.holiday_date.split('T')[0];
+    return hDateStr === targetDateStr;
+  });
+  const isHolidayOrSunday = isSunday || isPublicHoliday;
+
+  const headerLabel = (targetDateStr === todayStr) ? 'Status Today' : `Status (${formatDateShort(targetDateStr)})`;
+
   return `
     <div class="table-panel">
       <div class="table-panel-header">
@@ -178,26 +201,52 @@ function renderAttendanceSummary() {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Employee</th><th>Employee ID</th><th>Department</th><th>Designation</th><th>Reporting Manager</th><th>Shift</th><th>Status Today</th></tr></thead>
+          <thead><tr><th>Employee</th><th>Employee ID</th><th>Department</th><th>Designation</th><th>Reporting Manager</th><th>Shift</th><th>${headerLabel}</th></tr></thead>
           <tbody>
             ${filteredEmps.map(emp => {
-              const att = todayAtt[emp.id] || {};
+              const att = (targetDateStr === todayStr) ? (todayAtt[emp.id] || {}) : {};
+              const history = attendanceHistory[emp.id] || [];
+              const dayRec = history.find(r => r.date === targetDateStr);
+
               let status = 'Absent', statusCls = 'danger';
-              if (att.in && att.out) { 
-                status = 'Checked Out'; statusCls = 'info'; 
-              } else if (att.in) { 
-                const [shiftH, shiftM] = emp.shiftStart.split(':').map(Number);
-                const shiftStartMin = shiftH * 60 + shiftM;
+
+              // 1. Check live today / historical check-in status for target date
+              if (att.in && att.out) {
+                status = 'Checked Out'; statusCls = 'info';
+              } else if (att.in) {
+                const shiftParts = (emp.shiftStart || '09:00').split(':').map(Number);
+                const shiftStartMin = shiftParts[0] * 60 + shiftParts[1];
                 const inDate = new Date(att.in);
                 const inMin = inDate.getHours() * 60 + inDate.getMinutes();
-                if (inMin > shiftStartMin + 15) { // Assuming 15 min grace period
-                  status = 'Present (Late)'; 
-                  statusCls = 'warning'; 
+                if (inMin > shiftStartMin + 15) {
+                  status = 'Present (Late)'; statusCls = 'warning';
                 } else {
-                  status = 'Present'; 
-                  statusCls = 'success'; 
+                  status = 'Present'; statusCls = 'success';
                 }
+              } else if (dayRec && dayRec.login && dayRec.logout) {
+                status = 'Checked Out'; statusCls = 'info';
+              } else if (dayRec && dayRec.login) {
+                if (dayRec.delay > 15) {
+                  status = 'Present (Late)'; statusCls = 'warning';
+                } else {
+                  status = 'Present'; statusCls = 'success';
+                }
+              } else if (dayRec && dayRec.logout) {
+                status = 'Present'; statusCls = 'success';
               }
+              // 2. If no check-in, check if Sunday or Public Holiday for target date
+              else if (isHolidayOrSunday || (dayRec && (dayRec.status === 'Holiday' || dayRec.status === 'Weekly Off'))) {
+                status = 'Holiday'; statusCls = 'info';
+              }
+              // 3. Check leave status for target date
+              else if (dayRec && dayRec.status === 'Leave') {
+                status = 'On Leave'; statusCls = 'info';
+              }
+              // 4. Default to Absent for working day with no check-in
+              else {
+                status = 'Absent'; statusCls = 'danger';
+              }
+
               const color = getAvatarColor(emp.id);
               return `<tr>
                 <td><div class="employee-cell"><div class="avatar sm" style="background:${color}">${getInitials(emp.firstName, emp.lastName)}</div><span class="employee-cell-name">${emp.firstName} ${emp.lastName}</span></div></td>
@@ -214,6 +263,10 @@ function renderAttendanceSummary() {
       </div>
     </div>`;
 }
+
+
+
+
 
 // ===== 2. DAILY ATTENDANCE =====
 function renderDailyAttendance() {
@@ -770,9 +823,9 @@ function exportReportCSV() {
 function exportReportPDF() {
   const printWindow = window.open('', '_blank');
   const content = document.getElementById('report-content').innerHTML;
-  printWindow.document.write(`<!DOCTYPE html><html><head><title>FingerTrack Report — ${getCurrentMonth()}</title>
-    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',sans-serif;padding:30px;color:#1a1a2e;font-size:12px}h1{font-size:20px;margin-bottom:4px}.subtitle{color:#666;margin-bottom:20px;font-size:13px}table{width:100%;border-collapse:collapse;margin:10px 0}th{background:#f4f4f8;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#666;border-bottom:2px solid #e0e0e0}td{padding:8px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even){background:#fafafa}.chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600}.stat-grid,.stat-card,.compliance-grid,.compliance-card,.weekly-summary-card,.weekly-summary-grid,.weekly-metric,.report-tabs{display:none!important}.table-panel{border:1px solid #e0e0e0;border-radius:8px;margin:10px 0;overflow:hidden}.table-panel-header{padding:10px;border-bottom:1px solid #e0e0e0;font-weight:700;font-size:13px;background:#f4f4f8}.footer{margin-top:30px;padding-top:14px;border-top:1px solid #e0e0e0;font-size:10px;color:#999;text-align:center}@media print{body{padding:15px}}</style>
-    </head><body><h1>FingerTrack Enterprise — Report</h1><div class="subtitle">${getCurrentMonth()} • ${activeReportTab.charAt(0).toUpperCase() + activeReportTab.slice(1)} Report</div>${content}<div class="footer">FingerTrack Enterprise v1.0 • Cubic Code • Confidential</div><script>window.onload=()=>{window.print()}<\/script></body></html>`);
+  printWindow.document.write(`<!DOCTYPE html><html><head><title>Attendance Report — ${getCurrentMonth()}</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',sans-serif;padding:30px;color:#1a1a2e;font-size:12px}h1{font-size:20px;margin-bottom:4px}.subtitle{color:#666;margin-bottom:20px;font-size:13px}table{width:100%;border-collapse:collapse;margin:10px 0}th{background:#f4f4f8;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#666;border-bottom:2px solid #e0e0e0}td{padding:8px 10px;border-bottom:1px solid #eee;font-size:11px}tr:nth-child(even){background:#fafafa}.chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600}.stat-grid,.stat-card,.compliance-grid,.compliance-card,.weekly-summary-card,.weekly-summary-grid,.weekly-metric,.report-tabs{display:none!important}.table-panel{border:1px solid #e0e0e0;border-radius:8px;margin:10px 0;overflow:hidden}.table-panel-header{padding:10px;border-bottom:1px solid #e0e0e0;font-weight:700;font-size:13px;background:#f4f4f8}.footer{margin-top:30px;padding-top:14px;border-top:1px solid #e0e0e0;font-size:10px;color:#999;text-align:center}@media print{@page{margin:0}body{padding:15mm}}</style>
+    </head><body><h1>Attendance Report</h1><div class="subtitle">${getCurrentMonth()} • ${activeReportTab.charAt(0).toUpperCase() + activeReportTab.slice(1)} Report</div>${content}<div class="footer">Cubic Code • Confidential</div><script>window.onload=()=>{window.print()}<\/script></body></html>`);
   printWindow.document.close();
   showToast('PDF report opened in print dialog', 'success');
 }

@@ -385,7 +385,7 @@ function printPaymentHistoryPayslip(paymentId) {
         <h3>Net Salary: ${formatCurrency(parseFloat(rec.net_salary || 0))}</h3>
       </div>
       <div class="payslip-footer">
-        <p>This is a computer-generated document. No signature is required.</p>
+        <p>This is a computer-generated payslip.</p>
       </div>
     </div>
   `;
@@ -655,7 +655,7 @@ function printPayslip(empId) {
         <h3>Net Salary: ${formatCurrency(s.net)}</h3>
       </div>
       <div class="payslip-footer">
-        <p>This is a computer-generated document. No signature is required.</p>
+        <p>This is a computer-generated payslip.</p>
       </div>
     </div>
   `;
