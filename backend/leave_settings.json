@@ -4,7 +4,7 @@
   "optionalCount": 0.5,
   "lopRule": "pro-rata",
   "halfDayRule": 0.5,
-  "monthlyLimit": 3,
+  "monthlyLimit": 1.5,
   "carryForward": false,
   "carryForwardMax": 5
 }

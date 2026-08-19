@@ -17,7 +17,7 @@ let LEAVE_SETTINGS = {
   optionalCount: 0.5,
   lopRule: 'pro-rata',
   halfDayRule: 0.5,
-  monthlyLimit: 3.0,
+  monthlyLimit: 1.5,
   carryForward: false,
   carryForwardMax: 5
 };
@@ -1252,28 +1252,28 @@ app.get('/payslip/:id', async (req, res) => {
       const isSaturday = (dayOfWeek === 6);
       const halfDayThreshold = isSaturday ? 4.0 : 5.0;
 
-      if (login && logout) {
-        status = (checkInLog && checkInLog.device === 'WFH_DASHBOARD') ? 'Work From Home' : 'Present';
+      const halfDayCutoffMin = 16 * 60 + 30; // 4:30 PM (990 mins)
+      const isWfh = checkInLog && checkInLog.device === 'WFH_DASHBOARD';
+
+      if (isWfh) {
+        status = 'Work From Home';
+        hours = 8.0;
+      } else if (login && logout) {
+        status = 'Present';
         const [linH, linM] = login.split(':').map(Number);
         const [loutH, loutM] = logout.split(':').map(Number);
         const loginMin = linH * 60 + linM;
         const logoutMin = loutH * 60 + loutM;
         hours = Math.round(((logoutMin - loginMin) / 60) * 100) / 100;
-        if (hours < halfDayThreshold && status !== 'Work From Home') {
+        if (logoutMin < halfDayCutoffMin || hours < halfDayThreshold) {
           status = 'Half Day';
         }
       } else if (login) {
-        status = (checkInLog && checkInLog.device === 'WFH_DASHBOARD') ? 'Work From Home' : 'Present';
+        status = 'Half Day';
         hours = 4.0;
-        if (hours < halfDayThreshold && status !== 'Work From Home') {
-          status = 'Half Day';
-        }
       } else if (logout) {
-        status = 'Present';
+        status = 'Half Day';
         hours = 4.0;
-        if (hours < halfDayThreshold) {
-          status = 'Half Day';
-        }
       } else if (isHoliday && hasJoined && hasOccurred) {
         status = 'Holiday';
       } else if (dayOfWeek === 0 && hasJoined && hasOccurred) {
@@ -1320,12 +1320,13 @@ app.get('/payslip/:id', async (req, res) => {
       const halfDaysForLeaves = attendanceHistory.filter(r => r.status === 'Half Day' && r.date !== todayStr).length;
       const totalLeavesTaken = (empFormatted.leavesTaken || 0) + absentDays + (halfDaysForLeaves * 0.5);
 
-      const paidAllowance = parseFloat(LEAVE_SETTINGS.monthlyLimit || 2.5);
+      const paidAllowance = parseFloat(LEAVE_SETTINGS.monthlyLimit || 1.5);
       const paidLeaves = Math.min(totalLeavesTaken, paidAllowance);
       const paidDays = Math.min(WORK_DAYS, md.days + paidLeaves);
 
       if (empFormatted.salaryType === 'monthly') {
-        basicPay = Math.round((empFormatted.monthlyRate / WORK_DAYS) * paidDays);
+        const dailyRate = Math.round(empFormatted.monthlyRate / WORK_DAYS);
+        basicPay = dailyRate * paidDays;
       } else {
         basicPay = Math.round(md.hours * empFormatted.hourlyRate);
       }

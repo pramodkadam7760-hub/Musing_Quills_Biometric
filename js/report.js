@@ -34,8 +34,9 @@ function getFilteredEmployees() {
 
 function getFilteredHistory(empId) {
   const history = attendanceHistory[empId] || [];
-  if (!reportFilterStartDate && !reportFilterEndDate) return history;
+  const emp = employees.find(e => e.id === empId);
   return history.filter(rec => {
+    if (emp && emp.joiningDate && rec.date < emp.joiningDate) return false;
     if (reportFilterStartDate && rec.date < reportFilterStartDate) return false;
     if (reportFilterEndDate && rec.date > reportFilterEndDate) return false;
     return true;

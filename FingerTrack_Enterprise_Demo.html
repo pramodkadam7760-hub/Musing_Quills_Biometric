@@ -3707,7 +3707,7 @@
       halfDayRule: '0.5', // '0.5' (default), '0.0' (fully paid), '1.0' (full deduction)
       carryForward: true,
       carryForwardMax: 5,
-      monthlyLimit: 3,
+      monthlyLimit: 1.5,
       yearlyLimit: 18
     };
 
@@ -3908,19 +3908,32 @@
 
           const isSaturday = (dayOfWeek === 6);
           const halfDayThreshold = isSaturday ? 4.0 : 5.0;
+          const halfDayCutoffMin = 16 * 60 + 30; // 4:30 PM (990 mins)
           let expectedWorkHours = isSaturday ? 4.0 : getExpectedHours(emp);
           if (PAYROLL_SETTINGS.lunchBreakDeduction && expectedWorkHours > 5.0) {
             expectedWorkHours = Math.max(5.0, expectedWorkHours - 1.0);
           }
 
-          if (login && logout) {
-            status = (checkInLog && checkInLog.device === 'WFH_DASHBOARD') ? 'Work From Home' : 'Present';
+          const isWfh = checkInLog && checkInLog.device === 'WFH_DASHBOARD';
+
+          if (isWfh) {
+            status = 'Work From Home';
+            hours = 8.0;
+            delay = 0;
+            earlyExit = 0;
+            if (isHoliday || dayOfWeek === 0) {
+              dailyOt = hours;
+            } else if (hours > expectedWorkHours) {
+              dailyOt = Math.round((hours - expectedWorkHours) * 100) / 100;
+            }
+          } else if (login && logout) {
+            status = 'Present';
             const [linH, linM] = login.split(':').map(Number);
             const [loutH, loutM] = logout.split(':').map(Number);
             const loginMin = linH * 60 + linM;
             const logoutMin = loutH * 60 + loutM;
 
-            delay = status === 'Work From Home' ? 0 : Math.max(0, loginMin - (shiftH * 60 + shiftM));
+            delay = Math.max(0, loginMin - (shiftH * 60 + shiftM));
             if (isSaturday) {
               const satEndMin = (shiftH * 60 + shiftM) + 240; // 4 hours shift
               earlyExit = Math.max(0, satEndMin - logoutMin);
@@ -3934,36 +3947,30 @@
             }
             hours = Math.round(calculatedHours * 100) / 100;
 
-            if (hours < halfDayThreshold && status !== 'Work From Home') {
+            if (logoutMin < halfDayCutoffMin || hours < halfDayThreshold) {
               status = 'Half Day';
             }
 
             // Calculate daily overtime
             if (isHoliday || dayOfWeek === 0) {
-              // Worked on holiday or weekly off -> all hours count as overtime
               dailyOt = hours;
             } else if (hours > expectedWorkHours) {
               dailyOt = Math.round((hours - expectedWorkHours) * 100) / 100;
             }
           } else if (login) {
-            status = (checkInLog && checkInLog.device === 'WFH_DASHBOARD') ? 'Work From Home' : 'Present';
+            status = 'Present';
             const [linH, linM] = login.split(':').map(Number);
-            delay = status === 'Work From Home' ? 0 : Math.max(0, (linH * 60 + linM) - (shiftH * 60 + shiftM));
+            delay = Math.max(0, (linH * 60 + linM) - (shiftH * 60 + shiftM));
 
             if (dateStr === todayStr) {
               hours = 0.0;
             } else {
               hours = 4.0;
-            }
-            if (hours < halfDayThreshold && status !== 'Work From Home') {
               status = 'Half Day';
             }
           } else if (logout) {
-            status = 'Present';
+            status = 'Half Day';
             hours = 4.0;
-            if (hours < halfDayThreshold) {
-              status = 'Half Day';
-            }
           } else if (isHoliday && hasJoined && hasOccurred) {
             status = 'Holiday';
           } else if (dayOfWeek === 0 && hasJoined && hasOccurred) {
@@ -4203,7 +4210,8 @@
         // Basic pay is calculated directly based on the days present + paid leaves
         const paidLeaves = md.days > 0 ? Math.min(totalLeavesTaken, paidAllowance) : 0;
         const paidDays = Math.min(WORK_DAYS, md.days + paidLeaves);
-        basicPay = Math.round((emp.monthlyRate / WORK_DAYS) * paidDays);
+        const dailyRate = Math.round(emp.monthlyRate / WORK_DAYS);
+        basicPay = dailyRate * paidDays;
 
         if (PAYROLL_SETTINGS.monthlyOtEnabled) {
           const hourlyRate = emp.monthlyRate / (WORK_DAYS * 8);
@@ -8435,7 +8443,7 @@
                 <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
                   <div class="form-group" style="flex: 1;">
                     <label class="form-label" style="font-size: 12px;">Monthly Leave Limit</label>
-                    <input type="number" class="form-input" id="setting-monthly-limit" min="1" step="1" value="${LEAVE_SETTINGS.monthlyLimit}">
+                    <input type="number" class="form-input" id="setting-monthly-limit" min="0" step="0.5" value="${LEAVE_SETTINGS.monthlyLimit}">
                   </div>
                   <div class="form-group" style="flex: 1;">
                     <label class="form-label" style="font-size: 12px;">Yearly Leave Limit</label>

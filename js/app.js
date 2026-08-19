@@ -119,7 +119,7 @@ let LEAVE_SETTINGS = {
   halfDayRule: '0.5', // '0.5' (default), '0.0' (fully paid), '1.0' (full deduction)
   carryForward: true,
   carryForwardMax: 5,
-  monthlyLimit: 3,
+  monthlyLimit: 1.5,
   yearlyLimit: 18
 };
 
@@ -318,15 +318,23 @@ function compileAttendanceData(logs) {
 
       const isSaturday = (dayOfWeek === 6);
       const halfDayThreshold = isSaturday ? 4.0 : 5.0;
+      const halfDayCutoffMin = 16 * 60 + 30; // 4:30 PM (990 mins)
 
-      if (login && logout) {
-        status = (checkInLog && checkInLog.device === 'WFH_DASHBOARD') ? 'Work From Home' : 'Present';
+      const isWfh = checkInLog && checkInLog.device === 'WFH_DASHBOARD';
+
+      if (isWfh) {
+        status = 'Work From Home';
+        hours = 8.0;
+        delay = 0;
+        earlyExit = 0;
+      } else if (login && logout) {
+        status = 'Present';
         const [linH, linM] = login.split(':').map(Number);
         const [loutH, loutM] = logout.split(':').map(Number);
         const loginMin = linH * 60 + linM;
         const logoutMin = loutH * 60 + loutM;
 
-        delay = status === 'Work From Home' ? 0 : Math.max(0, loginMin - (shiftH * 60 + shiftM));
+        delay = Math.max(0, loginMin - (shiftH * 60 + shiftM));
         if (isSaturday) {
           const satEndMin = (shiftH * 60 + shiftM) + 240; // 4 hours shift
           earlyExit = Math.max(0, satEndMin - logoutMin);
@@ -335,28 +343,23 @@ function compileAttendanceData(logs) {
         }
         hours = Math.round(((logoutMin - loginMin) / 60) * 100) / 100;
 
-        if (hours < halfDayThreshold && status !== 'Work From Home') {
+        if (logoutMin < halfDayCutoffMin || hours < halfDayThreshold) {
           status = 'Half Day';
         }
       } else if (login) {
-        status = (checkInLog && checkInLog.device === 'WFH_DASHBOARD') ? 'Work From Home' : 'Present';
+        status = 'Present';
         const [linH, linM] = login.split(':').map(Number);
-        delay = status === 'Work From Home' ? 0 : Math.max(0, (linH * 60 + linM) - (shiftH * 60 + shiftM));
+        delay = Math.max(0, (linH * 60 + linM) - (shiftH * 60 + shiftM));
 
         if (dateStr === todayStr) {
           hours = 0.0;
         } else {
           hours = 4.0;
-        }
-        if (hours < halfDayThreshold && status !== 'Work From Home') {
           status = 'Half Day';
         }
       } else if (logout) {
-        status = 'Present';
+        status = 'Half Day';
         hours = 4.0;
-        if (hours < halfDayThreshold) {
-          status = 'Half Day';
-        }
       } else if (isHoliday && hasJoined && hasOccurred) {
         status = 'Holiday';
       } else if (dayOfWeek === 0 && hasJoined && hasOccurred) {
@@ -602,7 +605,8 @@ function computeSalary(emp) {
     // Basic pay is calculated directly based on the days present + paid leaves
     const paidLeaves = md.days > 0 ? Math.min(totalLeavesTaken, paidAllowance) : 0;
     const paidDays = Math.min(WORK_DAYS, md.days + paidLeaves);
-    basicPay = Math.round((emp.monthlyRate / WORK_DAYS) * paidDays);
+    const dailyRate = Math.round(emp.monthlyRate / WORK_DAYS);
+    basicPay = dailyRate * paidDays;
 
     if (PAYROLL_SETTINGS.monthlyOtEnabled) {
       const hourlyRate = emp.monthlyRate / (WORK_DAYS * 8);
