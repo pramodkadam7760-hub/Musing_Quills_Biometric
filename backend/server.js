@@ -88,10 +88,13 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
-// Serve frontend static files from parent directory
-const frontendDir = path.join(__dirname, '..');
-app.use('/css', express.static(path.join(frontendDir, 'css')));
-app.use('/js', express.static(path.join(frontendDir, 'js')));
+const staticOptions = {
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  }
+};
+app.use('/css', express.static(path.join(frontendDir, 'css'), staticOptions));
+app.use('/js', express.static(path.join(frontendDir, 'js'), staticOptions));
 app.use('/cubiccode_logo.png', express.static(path.join(frontendDir, 'cubiccode_logo.png')));
 
 // SQLite Session Store

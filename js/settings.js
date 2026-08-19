@@ -97,7 +97,7 @@ function renderSettings(container) {
             <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
               <div class="form-group" style="flex: 1;">
                 <label class="form-label" style="font-size: 12px;">Monthly Leave Limit</label>
-                <input type="number" class="form-input" id="setting-monthly-limit" min="0" step="0.5" value="${LEAVE_SETTINGS.monthlyLimit}">
+                <input type="number" class="form-input" id="setting-monthly-limit" min="0" step="any" value="${LEAVE_SETTINGS.monthlyLimit}">
               </div>
               <div class="form-group" style="flex: 1;">
                 <label class="form-label" style="font-size: 12px;">Yearly Leave Limit</label>
