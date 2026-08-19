@@ -88,6 +88,7 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
+const frontendDir = path.join(__dirname, '..');
 const staticOptions = {
   setHeaders: (res) => {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
