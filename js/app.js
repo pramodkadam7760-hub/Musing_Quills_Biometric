@@ -317,7 +317,7 @@ function compileAttendanceData(logs) {
       });
 
       const isSaturday = (dayOfWeek === 6);
-      const halfDayThreshold = isSaturday ? 4.0 : 5.0;
+      const halfDayThreshold = isSaturday ? 3.5 : 5.0;
       const halfDayCutoffMin = 16 * 60 + 30; // 4:30 PM (990 mins)
 
       const isWfh = checkInLog && checkInLog.device === 'WFH_DASHBOARD';
@@ -343,7 +343,10 @@ function compileAttendanceData(logs) {
         }
         hours = Math.round(((logoutMin - loginMin) / 60) * 100) / 100;
 
-        if (logoutMin < halfDayCutoffMin || hours < halfDayThreshold) {
+        const isHalfDay = isSaturday
+          ? hours < halfDayThreshold
+          : (logoutMin < halfDayCutoffMin || hours < halfDayThreshold);
+        if (isHalfDay) {
           status = 'Half Day';
         }
       } else if (login) {
