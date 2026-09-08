@@ -595,7 +595,7 @@ function computeSalary(emp) {
       unpaidLeaveDeduction = Math.round(excessLeaves * LEAVE_SETTINGS.lopFixedAmount);
     } else {
       const perDaySalary = emp.monthlyRate / WORK_DAYS;
-      unpaidLeaveDeduction = Math.round(excessLeaves * perDaySalary);
+      unpaidLeaveDeduction = excessLeaves * perDaySalary;
     }
   }
 
@@ -608,7 +608,7 @@ function computeSalary(emp) {
     // Basic pay is calculated directly based on the days present + paid leaves
     const paidLeaves = md.days > 0 ? Math.min(totalLeavesTaken, paidAllowance) : 0;
     const paidDays = Math.min(WORK_DAYS, md.days + paidLeaves);
-    const dailyRate = Math.round(emp.monthlyRate / WORK_DAYS);
+    const dailyRate = emp.monthlyRate / WORK_DAYS;
     basicPay = dailyRate * paidDays;
 
     if (PAYROLL_SETTINGS.monthlyOtEnabled) {
@@ -650,7 +650,7 @@ function computeSalary(emp) {
     excessLeaves,
     unpaidLeaveDeduction: 0, // 0 since LOP is already integrated into basicPay
     totalDeductions,
-    net: Math.round(netSalary),
+    net: netSalary,
     // Legacy compat
     gross: basicPay + overtime + bonus,
     grossEarnings: basicPay + overtime + bonus,

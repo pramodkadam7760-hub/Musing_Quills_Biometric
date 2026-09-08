@@ -239,12 +239,22 @@ async function loadPaymentHistory() {
   try {
     salaryPaymentRecords = await apiFetch(`${API_BASE_URL}/salary-payments`);
 
-    if (!salaryPaymentRecords || salaryPaymentRecords.length === 0) {
+    // Filter records to only show the selected payroll month & year
+    const filtered = (salaryPaymentRecords || []).filter(rec => {
+      if (!rec.payment_date) return false;
+      const d = new Date(rec.payment_date);
+      return d.getMonth() === selectedPayrollMonth && d.getFullYear() === selectedPayrollYear;
+    });
+
+    const monthLabel = new Date(selectedPayrollYear, selectedPayrollMonth, 1)
+      .toLocaleString('default', { month: 'long', year: 'numeric' });
+
+    if (filtered.length === 0) {
       container.innerHTML = `
         <div class="payment-history-empty">
           <i class="ti ti-receipt-off" style="font-size: 48px; color: var(--text-muted); margin-bottom: 12px;"></i>
-          <p style="color: var(--text-muted); font-size: 14px;">No salary payments recorded yet.</p>
-          <p style="color: var(--text-muted); font-size: 12px;">Payment records will appear here once you pay an employee's salary.</p>
+          <p style="color: var(--text-muted); font-size: 14px;">No salary payments recorded for <strong>${monthLabel}</strong>.</p>
+          <p style="color: var(--text-muted); font-size: 12px;">Switch months using the selector above to view other records.</p>
         </div>
       `;
       return;
@@ -268,7 +278,7 @@ async function loadPaymentHistory() {
             </tr>
           </thead>
           <tbody>
-            ${salaryPaymentRecords.map(rec => {
+            ${filtered.map(rec => {
               const isRevised = rec.status === 'Revised';
               const statusClass = isRevised ? 'chip-revised' : 'chip-paid';
               const revisedInfo = isRevised && rec.revised_at
@@ -277,9 +287,13 @@ async function loadPaymentHistory() {
                      Revised ${new Date(rec.revised_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                    </div>`
                 : '';
-              const paymentDate = rec.payment_date ? new Date(rec.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-              const startDate = rec.start_date ? new Date(rec.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—';
-              const endDate = rec.end_date ? new Date(rec.end_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—';
+              const paymentDate = rec.payment_date
+                ? new Date(rec.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                : '—';
+              // Period: show "Month YYYY" derived from payment_date
+              const periodLabel = rec.payment_date
+                ? new Date(rec.payment_date).toLocaleString('default', { month: 'long', year: 'numeric' })
+                : '—';
 
               return `
                 <tr>
@@ -287,7 +301,7 @@ async function loadPaymentHistory() {
                     <div class="ph-emp-name">${rec.employee_name || 'Employee'}</div>
                     <div class="ph-emp-id">${rec.employee_id}</div>
                   </td>
-                  <td>${startDate} — ${endDate}</td>
+                  <td>${periodLabel}</td>
                   <td>${parseFloat(rec.present_days || 0)}</td>
                   <td>${formatCurrency(parseFloat(rec.base_salary || 0))}</td>
                   <td>${formatCurrency(parseFloat(rec.earnings || 0))}</td>
@@ -308,6 +322,9 @@ async function loadPaymentHistory() {
                     <button class="btn btn-ghost btn-sm" onclick="openEditPaymentModal(${rec.id})" title="Edit Payment Record" style="color: var(--primary);">
                       <i class="ti ti-edit"></i>
                     </button>
+                    <button class="btn btn-ghost btn-sm" onclick="deletePaymentRecord(${rec.id})" title="Delete Record" style="color: var(--danger);">
+                      <i class="ti ti-trash"></i>
+                    </button>
                   </td>
                 </tr>
               `;
@@ -324,6 +341,24 @@ async function loadPaymentHistory() {
         <p style="color: var(--text-muted); font-size: 12px;">${err.message || 'Unknown error'}</p>
       </div>
     `;
+  }
+}
+
+// ===== Delete Payment Record =====
+async function deletePaymentRecord(paymentId) {
+  const rec = salaryPaymentRecords.find(r => r.id === paymentId);
+  if (!rec) return;
+  const empName = rec.employee_name || rec.employee_id;
+  const period = rec.payment_date
+    ? new Date(rec.payment_date).toLocaleString('default', { month: 'long', year: 'numeric' })
+    : 'this period';
+  if (!confirm(`Delete salary payment for ${empName} (${period})? This cannot be undone.`)) return;
+  try {
+    await apiFetch(`${API_BASE_URL}/salary-payments/${paymentId}`, { method: 'DELETE' });
+    showToast('Payment record deleted', 'success');
+    await loadPaymentHistory();
+  } catch (err) {
+    showToast(err.message || 'Delete failed', 'error');
   }
 }
 

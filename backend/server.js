@@ -537,6 +537,23 @@ app.put('/api/salary-payments/:id', requireAdmin, async (req, res) => {
   }
 });
 
+// DELETE: Remove a salary payment record
+app.delete('/api/salary-payments/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const existing = await db.query('SELECT * FROM salary_payments WHERE id = ?', [id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ error: 'Salary payment record not found' });
+    }
+    await db.query('DELETE FROM salary_payments WHERE id = ?', [id]);
+    console.log(`[PAYROLL] Payment record #${id} deleted.`);
+    res.json({ success: true, message: 'Payment record deleted successfully' });
+  } catch (err) {
+    console.error('[PAYROLL] Delete payment error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============================================================
 // ATTENDANCE LOGS (Protected)
 // ============================================================
