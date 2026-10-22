@@ -983,20 +983,20 @@ void drawResultCard(const char *heading, const char *line1, const char *line2, u
   drawLogo(264, 4, 52, 50, 6, C_PRIMARY);
   tft.drawFastHLine(10, 58, 300, C_DIVIDER);
 
-  // 2. Center Card (x=10, y=66, w=300, h=124)
-  fillCard(10, 66, 300, 124, C_PANEL);
-  outlineCard(10, 66, 300, 124, C_DIVIDER);
+  // 2. Center Card (x=10, y=66, w=300, h=122)
+  fillCard(10, 66, 300, 122, C_PANEL);
+  outlineCard(10, 66, 300, 122, C_DIVIDER);
 
-  // Status Badge Pill inside card
+  // Status Badge Pill inside card (e.g. CHECKED IN / CHECKED OUT / SHIFT ENDED)
   int badgeW = strlen(heading) * 12 + 28;
   if (badgeW < 140) badgeW = 140;
   if (badgeW > 280) badgeW = 280;
   int badgeX = (SCREEN_W - badgeW) / 2;
-  tft.fillRoundRect(badgeX, 76, badgeW, 28, 6, badgeColor);
+  tft.fillRoundRect(badgeX, 78, badgeW, 30, 6, badgeColor);
   tft.setTextColor(C_WHITE, badgeColor);
   tft.setTextSize(2);
   int tw = strlen(heading) * 12;
-  tft.setCursor((SCREEN_W - tw) / 2, 82);
+  tft.setCursor((SCREEN_W - tw) / 2, 85);
   tft.print(heading);
 
   // Employee Name / Primary Line
@@ -1005,42 +1005,46 @@ void drawResultCard(const char *heading, const char *line1, const char *line2, u
   uint8_t nSz = (nameLen > 18) ? 1 : 2;
   tft.setTextSize(nSz);
   tw = nameLen * (nSz == 2 ? 12 : 6);
-  tft.setCursor((SCREEN_W - tw) / 2, 116);
+  tft.setCursor((SCREEN_W - tw) / 2, 122);
   tft.print(line1);
 
   // Subtitle / Detail Line
   tft.setTextColor(C_SUBTEXT, C_PANEL);
   tft.setTextSize(1);
   tw = strlen(line2) * 6;
-  tft.setCursor((SCREEN_W - tw) / 2, 140);
+  tft.setCursor((SCREEN_W - tw) / 2, 150);
   tft.print(line2);
 
-  // Status indicator dot
-  if (ok) {
-    tft.fillCircle(105, 166, 4, C_SUCCESS);
-    tft.setTextColor(C_SUCCESS, C_PANEL);
-    tft.setTextSize(1);
-    tft.setCursor(117, 163);
-    tft.print("Cloud Synchronized");
-  } else {
-    tft.fillCircle(105, 166, 4, C_PRIMARY);
-    tft.setTextColor(C_PRIMARY, C_PANEL);
-    tft.setTextSize(1);
-    tft.setCursor(117, 163);
-    tft.print("Verification Notice");
-  }
-
-  // 3. Footer
+  // 3. Footer (Standard terminal footer without date/time)
   tft.fillRect(0, 198, 320, 42, C_PANEL);
   tft.drawFastHLine(0, 198, 320, C_DIVIDER);
 
-  char ts[32];
-  clk.fmtFull(ts, sizeof(ts));
-  tft.setTextColor(C_SUBTEXT, C_PANEL);
+  const bool wifiOk = (WiFi.status() == WL_CONNECTED);
+  const uint16_t wifiCol = wifiOk ? C_SUCCESS : C_SUBTEXT;
+  drawWifiIcon(24, 218, wifiCol);
+  tft.setTextColor(wifiCol, C_PANEL);
   tft.setTextSize(1);
-  tw = strlen(ts) * 6;
-  tft.setCursor((SCREEN_W - tw) / 2, 214);
-  tft.print(ts);
+  tft.setCursor(38, 215);
+  tft.print(wifiOk ? "Connected" : "Offline");
+
+  tft.drawFastVLine(105, 204, 29, C_DIVIDER);
+  tft.drawFastVLine(232, 204, 29, C_DIVIDER);
+
+  char enrolledText[24];
+  finger.getTemplateCount();
+  snprintf(enrolledText, sizeof(enrolledText), "%u/200 enrolled", finger.templateCount);
+  tw = strlen(enrolledText) * 6;
+  tft.setTextColor(C_TEXT, C_PANEL);
+  tft.setTextSize(1);
+  tft.setCursor(169 - (tw / 2), 215);
+  tft.print(enrolledText);
+
+  tft.fillRoundRect(240, 205, 72, 27, 5, C_PRIMARY);
+  drawGearIcon(252, 218, C_WHITE);
+  tft.setTextColor(C_WHITE, C_PRIMARY);
+  tft.setTextSize(1);
+  tft.setCursor(267, 215);
+  tft.print("Admin");
 }
 
 void showMessage(const char *heading, const char *line1, const char *line2, uint16_t hColor = C_PRIMARY) {
