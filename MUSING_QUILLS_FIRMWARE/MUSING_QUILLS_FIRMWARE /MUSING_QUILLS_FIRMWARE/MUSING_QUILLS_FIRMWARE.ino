@@ -9,6 +9,7 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <XPT2046_Touchscreen.h>
 #include <pgmspace.h>
 #include "esp_timer.h"
@@ -18,7 +19,7 @@ String ssid = "Quantumclk.Tech";
 String password = "zxcvbnm009";
 
 // 2. Active Server URL (default):
-String serverUrl = "http://192.168.29.251:5001";
+String serverUrl = "https://attendancemq.quantumclk.tech";
 
 // ═══════════════════════════════════════════════════════════
 //  PINS
@@ -388,9 +389,16 @@ int sendAttendanceLogToServer(int fingerprint_id, const char *action,
   }
 
   HTTPClient http;
+  WiFiClientSecure sClient;
+  WiFiClient bClient;
   String url = String(serverUrl) + "/api/hardware/log";
-  http.begin(url);
-  http.setTimeout(4000); // 4 seconds explicit timeout
+  if (url.startsWith("https://")) {
+    sClient.setInsecure();
+    http.begin(sClient, url);
+  } else {
+    http.begin(bClient, url);
+  }
+  http.setTimeout(5000); // 5 seconds explicit timeout
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Connection", "close");
 
@@ -448,9 +456,16 @@ void sendEnrollmentToServer(int fingerprint_id, const char *employee_name) {
   }
 
   HTTPClient http;
+  WiFiClientSecure sClient;
+  WiFiClient bClient;
   String url = String(serverUrl) + "/api/hardware/enroll";
-  http.begin(url);
-  http.setTimeout(5000); // 5 seconds explicit timeout
+  if (url.startsWith("https://")) {
+    sClient.setInsecure();
+    http.begin(sClient, url);
+  } else {
+    http.begin(bClient, url);
+  }
+  http.setTimeout(6000); // 6 seconds explicit timeout
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Connection", "close");
 
@@ -480,9 +495,16 @@ void sendDeletionToServer(int fingerprint_id) {
   }
 
   HTTPClient http;
+  WiFiClientSecure sClient;
+  WiFiClient bClient;
   String url = String(serverUrl) + "/api/hardware/delete";
-  http.begin(url);
-  http.setTimeout(5000); // 5 seconds explicit timeout
+  if (url.startsWith("https://")) {
+    sClient.setInsecure();
+    http.begin(sClient, url);
+  } else {
+    http.begin(bClient, url);
+  }
+  http.setTimeout(6000); // 6 seconds explicit timeout
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Connection", "close");
 
@@ -505,7 +527,7 @@ void sendDeletionToServer(int fingerprint_id) {
 
 // ═══════════════════════════════════════════════════════════
 void loadAll() {
-  prefs.begin("qclk", true);
+  prefs.begin("qclk", false);
   for (int i = 1; i <= MAX_EMPLOYEES; i++) {
     char k[10];
     snprintf(k, sizeof(k), "ci%d", i);
@@ -519,6 +541,11 @@ void loadAll() {
   }
   adminEnrolled = prefs.getBool("adminOK", false);
   serverUrl = prefs.getString("srv", serverUrl);
+  // Auto-upgrade stale local or legacy addresses to the live cloud URL
+  if (serverUrl.indexOf("192.168.") != -1 || serverUrl.indexOf("localhost") != -1 || serverUrl.indexOf("10.0.") != -1 || serverUrl.length() == 0) {
+    serverUrl = "https://attendancemq.quantumclk.tech";
+    prefs.putString("srv", serverUrl);
+  }
   ssid = prefs.getString("ssid", ssid);
   password = prefs.getString("pass", password);
   prefs.end();
