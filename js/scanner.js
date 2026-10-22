@@ -179,12 +179,21 @@ function doScan(action) {
           setScannerState('ok', `Welcome, ${emp.firstName}! ✓ Checked In (WFH)`);
           showToast(`${emp.firstName} ${emp.lastName} marked Work From Home`, 'info');
         } else if (delayMin > LATE_PENALTY.graceMinutes) {
-          setScannerState('fail', `⚠ ${emp.firstName} is ${delayMin} min LATE!`);
-          showToast(`⚠ LATE ARRIVAL: ${emp.firstName} ${emp.lastName} is ${delayMin} minutes late!`, 'late');
+          const delayText = (function(m) {
+            m = Math.round(Number(m) || 0);
+            if (m <= 0) return '0 min';
+            if (m < 60) return `${m} min`;
+            const hrs = Math.floor(m / 60);
+            const rem = m % 60;
+            return rem === 0 ? `${hrs} hr${hrs > 1 ? 's' : ''}` : `${hrs} hr${hrs > 1 ? 's' : ''} ${rem} min`;
+          })(delayMin);
+
+          setScannerState('fail', `⚠ ${emp.firstName} is ${delayText} LATE!`);
+          showToast(`⚠ LATE ARRIVAL: ${emp.firstName} ${emp.lastName} is ${delayText} late!`, 'late');
           
           addNotification(
             `Late Arrival — ${emp.firstName} ${emp.lastName}`,
-            `Arrived ${delayMin} min late. Shift: ${format24to12(emp.shiftStart)}, Arrived: ${formatTimeShort(now)}`,
+            `${emp.firstName} ${emp.lastName} arrived ${delayText} late. Shift: ${format24to12(emp.shiftStart)}, Arrived: ${formatTimeShort(now)}`,
             'late',
             emp.id
           );

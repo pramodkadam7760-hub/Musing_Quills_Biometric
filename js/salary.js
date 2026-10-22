@@ -380,8 +380,8 @@ function printPaymentHistoryPayslip(paymentId) {
   printArea.innerHTML = `
     <div class="payslip-container">
       <div class="payslip-header">
-        <img src="/cubiccode_logo.png" alt="Cubic Code Logo" style="height: 50px; margin-bottom: 10px;">
-        <h2 style="margin: 0; font-size: 24px; font-weight: 700; color: #000; letter-spacing: -0.5px;">CUBIC CODE</h2>
+        <img src="/musingquills_horizontal_blue.png" alt="Musing Quills Logo" style="max-height: 50px; width: auto; object-fit: contain; margin-bottom: 10px;">
+        <h2 style="margin: 0; font-size: 24px; font-weight: 700; color: #000; letter-spacing: -0.5px;">MUSING QUILLS</h2>
         <p style="margin: 5px 0 0 0; color: #555;">Payslip for the month of ${payMonth}</p>
       </div>
       <div class="payslip-emp-details">
@@ -436,7 +436,7 @@ function sendPaymentHistoryWhatsApp(paymentId) {
 
   const payMonth = rec.payment_date ? new Date(rec.payment_date).toLocaleString('default', { month: 'long', year: 'numeric' }) : getCurrentMonth();
 
-  const text = `*CUBIC CODE*\n` +
+  const text = `*MUSING QUILLS*\n` +
                `*Salary Slip - ${payMonth}*\n\n` +
                `*Employee Details:*\n` +
                `• Name: ${rec.employee_name}\n` +
@@ -638,8 +638,8 @@ function printPayslip(empId) {
   printArea.innerHTML = `
     <div class="payslip-container">
       <div class="payslip-header">
-        <img src="/cubiccode_logo.png" alt="Cubic Code Logo" style="height: 50px; margin-bottom: 10px;">
-        <h2 style="margin: 0; font-size: 24px; font-weight: 700; color: #000; letter-spacing: -0.5px;">CUBIC CODE</h2>
+        <img src="/musingquills_horizontal_blue.png" alt="Musing Quills Logo" style="max-height: 50px; width: auto; object-fit: contain; margin-bottom: 10px;">
+        <h2 style="margin: 0; font-size: 24px; font-weight: 700; color: #000; letter-spacing: -0.5px;">MUSING QUILLS</h2>
         <p style="margin: 5px 0 0 0; color: #555;">Payslip for the month of ${getCurrentMonth()}</p>
       </div>
       <div class="payslip-emp-details">
@@ -713,7 +713,7 @@ function sendPayslipWhatsApp(empId) {
   const formattedLatePenalty = formatCurrency(s.latePenalty);
   const formattedLop = formatCurrency(s.unpaidLeaveDeduction || 0);
   
-  const text = `*CUBIC CODE*\n` +
+  const text = `*MUSING QUILLS*\n` +
                `*Salary Slip - ${getCurrentMonth()}*\n\n` +
                `*Employee Details:*\n` +
                `• Name: ${emp.firstName} ${emp.lastName}\n` +

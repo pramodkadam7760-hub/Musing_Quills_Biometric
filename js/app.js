@@ -95,7 +95,7 @@ let holidaysList = [];
 
 // ---- Audit Logs ----
 let auditLogs = [
-  { id: 'AL-1001', timestamp: new Date(Date.now() - 86400000).toISOString(), user: 'admin@cubiccode.io', action: 'System Config', details: 'Updated late penalty policy' }
+  { id: 'AL-1001', timestamp: new Date(Date.now() - 86400000).toISOString(), user: 'admin@musingquills.in', action: 'System Config', details: 'Updated late penalty policy' }
 ];
 
 let notifications = [];
@@ -191,13 +191,13 @@ function compileAttendanceData(logs) {
     const clearedTime = clearedTimeStr ? new Date(clearedTimeStr) : null;
     if (!clearedTime || timestamp > clearedTime) {
       let type = 'Check-Out';
-      let detail = `Checked out at ${timeStr} on ${dateStr} via ${log.device || 'GATE_1'}`;
+      let detail = `Checked out at ${timeStr} on ${dateStr} via ${log.device || 'MANUAL'}`;
       if (log.action === 'IN') {
         type = log.device === 'WFH_DASHBOARD' ? 'WFH' : 'Check-In';
-        detail = `${log.device === 'WFH_DASHBOARD' ? 'Checked in (WFH)' : 'Checked in'} at ${timeStr} on ${dateStr} via ${log.device || 'GATE_1'}`;
+        detail = `${log.device === 'WFH_DASHBOARD' ? 'Checked in (WFH)' : 'Checked in'} at ${timeStr} on ${dateStr} via ${log.device || 'MANUAL'}`;
       } else if (log.action === 'ENROLL') {
         type = 'Enrollment';
-        detail = `Enrolled biometric fingerprint at ${timeStr} on ${dateStr} via ${log.device || 'GATE_1'}`;
+        detail = `Enrolled biometric fingerprint at ${timeStr} on ${dateStr} via ${log.device || 'MANUAL'}`;
       }
 
       scanLog.unshift({
@@ -207,7 +207,7 @@ function compileAttendanceData(logs) {
         time: formatTimeShort(timestamp),
         type: type,
         detail: detail,
-        device: log.device || 'GATE_1',
+        device: log.device || 'MANUAL',
         timestamp: log.timestamp
       });
     }
@@ -451,6 +451,7 @@ async function loadAllData() {
     // Recalculate anniversaries, birthdays and probation reminders
     generateAnniversaryAndBirthdayReminders();
     generateProbationReminders();
+    generateTodayLateNotifications(logs);
     // Persist updated notifications
     try {
       localStorage.setItem('NOTIFICATIONS', JSON.stringify(notifications));
@@ -515,6 +516,37 @@ function format24to12(timeStr) {
   const ampm = h >= 12 ? 'PM' : 'AM';
   const h12 = h % 12 || 12;
   return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+function formatLateDuration(minutes) {
+  const m = Math.round(Number(minutes) || 0);
+  if (m <= 0) return '0 min';
+  if (m < 60) return `${m} min`;
+  const hrs = Math.floor(m / 60);
+  const remMin = m % 60;
+  if (remMin === 0) {
+    return `${hrs} hr${hrs > 1 ? 's' : ''}`;
+  }
+  return `${hrs} hr${hrs > 1 ? 's' : ''} ${remMin} min`;
+}
+
+function formatLateMessage(msg) {
+  if (!msg || typeof msg !== 'string') return msg;
+  let res = msg.replace(/(\d+)\s*(?:min(?:ute)?s?|m)\s*late/gi, (match, num) => {
+    const mins = parseInt(num, 10);
+    if (!isNaN(mins) && mins >= 60) {
+      return `${formatLateDuration(mins)} late`;
+    }
+    return match;
+  });
+  res = res.replace(/late\s*by\s*(\d+)\s*(?:min(?:ute)?s?|m)/gi, (match, num) => {
+    const mins = parseInt(num, 10);
+    if (!isNaN(mins) && mins >= 60) {
+      return `late by ${formatLateDuration(mins)}`;
+    }
+    return match;
+  });
+  return res;
 }
 
 function generateEmployeeId(department) {
@@ -837,6 +869,53 @@ function generateProbationReminders() {
   });
 }
 
+function generateTodayLateNotifications(logs) {
+  if (!logs || !logs.length) return;
+  const todayStr = getTodayDate(); // 'YYYY-MM-DD'
+  const todayLogs = logs.filter(l => {
+    if (!l.timestamp) return false;
+    const dateStr = String(l.timestamp).slice(0, 10);
+    return dateStr === todayStr && l.action && l.action.toUpperCase() === 'IN';
+  });
+
+  todayLogs.forEach(log => {
+    const emp = employees.find(e => e.id === log.employee_id);
+    if (!emp) return;
+
+    const shiftTime = emp.shiftStart || emp.shift_start || '10:00';
+    const [shiftH, shiftM] = shiftTime.split(':').map(Number);
+    const shiftStartMin = shiftH * 60 + shiftM;
+    const inDate = new Date(String(log.timestamp).replace(' ', 'T'));
+    if (isNaN(inDate.getTime())) return;
+    const arrivalMin = inDate.getHours() * 60 + inDate.getMinutes();
+    const delayMin = arrivalMin - shiftStartMin;
+    const grace = (typeof LATE_PENALTY !== 'undefined' && LATE_PENALTY.graceMinutes) ? LATE_PENALTY.graceMinutes : 15;
+
+    if (delayMin > grace) {
+      const empName = ((emp.firstName || emp.first_name || '') + ' ' + (emp.lastName || emp.last_name || '')).trim() || log.employee_name || 'Employee';
+      const notifKey = `Late Arrival — ${empName}`;
+      const delayText = formatLateDuration(delayMin);
+      const newMsg = `${empName} arrived ${delayText} late today (${todayStr}). Shift: ${format24to12(shiftTime)}, Arrived: ${formatTimeShort(inDate)} via ${formatDeviceName(log.device)}`;
+      const existingIdx = notifications.findIndex(n =>
+        n.empId === emp.id &&
+        n.title && n.title.includes('Late Arrival') &&
+        ((n.message && n.message.includes(todayStr)) || (n.timestamp && n.timestamp.startsWith(todayStr)))
+      );
+      if (existingIdx !== -1) {
+        notifications[existingIdx].message = newMsg;
+        notifications[existingIdx].title = notifKey;
+      } else {
+        addNotification(
+          notifKey,
+          newMsg,
+          'late',
+          emp.id
+        );
+      }
+    }
+  });
+}
+
 
 function updateNotificationBadge() {
   const badge = document.getElementById('notif-badge');
@@ -874,32 +953,30 @@ function renderNotificationDropdown() {
   const typeIcons = { late: 'ti-alarm', habitual: 'ti-alert-octagon', info: 'ti-info-circle', success: 'ti-circle-check' };
   const typeColors = { late: 'var(--warning)', habitual: 'var(--danger)', info: 'var(--info)', success: 'var(--success)' };
 
-  const unreadList = notifications.filter(n => !n.read);
-
-  if (unreadList.length === 0) {
+  if (!notifications || notifications.length === 0) {
     return `
       <div class="notif-header"><span>Notifications</span></div>
-      <div class="notif-empty"><i class="ti ti-bell-off"></i><p>No new notifications</p></div>
+      <div class="notif-empty"><i class="ti ti-bell-off"></i><p>No notifications</p></div>
     `;
   }
 
-  const unread = unreadList.length;
+  const unreadCount = notifications.filter(n => !n.read).length;
   return `
-    <div class="notif-header">
-      <span>Notifications ${unread > 0 ? `<span class="notif-unread-count">${unread} new</span>` : ''}</span>
-      ${unread > 0 ? `<button class="btn btn-ghost btn-sm" onclick="markAllRead()">Mark all read</button>` : ''}
+    <div class="notif-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);">
+      <span style="font-weight:600;">Notifications ${unreadCount > 0 ? `<span class="notif-unread-count" style="background:var(--danger);color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;margin-left:6px;">${unreadCount} new</span>` : ''}</span>
+      ${unreadCount > 0 ? `<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 8px;" onclick="markAllRead()">Mark all read</button>` : ''}
     </div>
-    <div class="notif-list">
-      ${unreadList.slice(0, 20).map(n => `
-        <div class="notif-item unread">
-          <div class="notif-item-icon" style="color:${typeColors[n.type] || 'var(--info)'}">
+    <div class="notif-list" style="max-height:360px;overflow-y:auto;">
+      ${notifications.slice(0, 25).map(n => `
+        <div class="notif-item ${n.read ? 'read' : 'unread'}" style="display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);${n.read ? 'opacity:0.75;' : 'background:rgba(67, 97, 238, 0.05);'}">
+          <div class="notif-item-icon" style="color:${typeColors[n.type] || 'var(--info)'};font-size:18px;margin-top:2px;">
             <i class="ti ${typeIcons[n.type] || 'ti-info-circle'}"></i>
           </div>
-          <div class="notif-item-content">
-            <div class="notif-item-title">${n.title}</div>
-            <div class="notif-item-msg">${n.message}</div>
+          <div class="notif-item-content" style="flex:1;">
+            <div class="notif-item-title" style="font-weight:${n.read ? '500' : '700'};font-size:13px;color:var(--text);margin-bottom:2px;">${n.title}</div>
+            <div class="notif-item-msg" style="font-size:12px;color:var(--text-muted);line-height:1.4;">${formatLateMessage(n.message)}</div>
+            <div class="notif-item-time" style="font-size:10px;color:var(--text-muted);margin-top:4px;">${n.time}</div>
           </div>
-          <div class="notif-item-time">${n.time}</div>
         </div>
       `).join('')}
     </div>
@@ -984,7 +1061,7 @@ async function initAuth() {
         id: 'EMP-ADM-1000',
         firstName: 'System',
         lastName: 'Admin',
-        email: 'admin@cubiccode.io',
+        email: 'admin@musingquills.in',
         systemRole: 'SUPER_ADMIN'
       };
       document.getElementById('login-screen').style.display = 'none';
@@ -1020,7 +1097,7 @@ async function initAuth() {
             id: 'EMP-ADM-1000',
             firstName: 'System',
             lastName: 'Admin',
-            email: 'admin@cubiccode.io',
+            email: 'admin@musingquills.in',
             systemRole: 'SUPER_ADMIN'
           };
           document.getElementById('login-screen').style.display = 'none';
@@ -1156,28 +1233,33 @@ window.addEventListener('load', function () {
               if (log.action && log.action.toUpperCase() === 'IN') {
                 const emp = employees.find(e => e.id === log.employee_id);
                 if (emp) {
-                  const [shiftH, shiftM] = emp.shiftStart.split(':').map(Number);
+                  const shiftStr = emp.shiftStart || emp.shift_start || '10:00';
+                  const [shiftH, shiftM] = shiftStr.split(':').map(Number);
                   const shiftStartMin = shiftH * 60 + shiftM;
-                  const inDate = new Date(log.timestamp);
+                  const inDate = new Date(String(log.timestamp).replace(' ', 'T'));
                   const arrivalMin = inDate.getHours() * 60 + inDate.getMinutes();
                   const delayMin = arrivalMin - shiftStartMin;
 
-                  if (delayMin > LATE_PENALTY.graceMinutes) {
-                    showToast(`⚠ LATE ARRIVAL: ${emp.firstName} ${emp.lastName} is ${delayMin} minutes late!`, 'late');
+                  const grace = (typeof LATE_PENALTY !== 'undefined' && LATE_PENALTY.graceMinutes) ? LATE_PENALTY.graceMinutes : 15;
+                  if (delayMin > grace) {
+                    const empName = ((emp.firstName || emp.first_name || '') + ' ' + (emp.lastName || emp.last_name || '')).trim() || log.employee_name || 'Employee';
+                    const delayText = formatLateDuration(delayMin);
+                    showToast(`⚠ LATE ARRIVAL: ${empName} is ${delayText} late!`, 'late');
 
                     addNotification(
-                      `Late Arrival — ${emp.firstName} ${emp.lastName}`,
-                      `Arrived ${delayMin} min late. Shift: ${format24to12(emp.shiftStart)}, Arrived: ${formatTimeShort(inDate)}`,
+                      `Late Arrival — ${empName}`,
+                      `${empName} arrived ${delayText} late. Shift: ${typeof format24to12 === 'function' ? format24to12(shiftStr) : shiftStr}, Arrived: ${typeof formatTimeShort === 'function' ? formatTimeShort(inDate) : inDate.toLocaleTimeString()}`,
                       'late',
                       emp.id
                     );
 
-                    const lateCount = getLateCount(emp.id);
-                    if (lateCount >= LATE_PENALTY.warningThreshold) {
-                      const penalty = getLatePenaltyAmount(emp.id, emp.monthlyRate || emp.hourlyRate * 200);
+                    const lateCount = typeof getLateCount === 'function' ? getLateCount(emp.id) : 0;
+                    const thresh = (typeof LATE_PENALTY !== 'undefined' && LATE_PENALTY.warningThreshold) ? LATE_PENALTY.warningThreshold : 3;
+                    if (lateCount >= thresh) {
+                      const penalty = typeof getLatePenaltyAmount === 'function' ? getLatePenaltyAmount(emp.id, emp.monthlyRate || (emp.hourlyRate ? emp.hourlyRate * 200 : 30000)) : 0;
                       addNotification(
-                        `⚠ Habitual Latecomer — ${emp.firstName} ${emp.lastName}`,
-                        `${lateCount} late marks this month. Salary penalty: ₹${penalty.toLocaleString('en-IN')} will be deducted.`,
+                        `⚠ Habitual Latecomer — ${empName}`,
+                        `${empName} has ${lateCount} late marks this month. Salary penalty: ₹${penalty.toLocaleString('en-IN')} will be deducted.`,
                         'habitual',
                         emp.id
                       );

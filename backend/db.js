@@ -72,6 +72,7 @@ const initializeDb = async () => {
         enrolled TINYINT(1) DEFAULT 0,
         leaves_taken DECIMAL(5, 2) DEFAULT 0.00,
         payroll_start_date DATE,
+        password VARCHAR(255) DEFAULT '123456',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
@@ -92,6 +93,13 @@ const initializeDb = async () => {
       // Column already exists or table freshly created
     }
 
+    try {
+      await pool.query("ALTER TABLE employees ADD COLUMN password VARCHAR(255) DEFAULT '123456'");
+      console.log('[DB] Added employees.password column.');
+    } catch (colErr) {
+      // Column already exists
+    }
+
     // 2. Attendance Logs Table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS attendance_logs (
@@ -101,9 +109,26 @@ const initializeDb = async () => {
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         action VARCHAR(20) NOT NULL,
         device VARCHAR(50) DEFAULT 'GATE_1',
+        reason VARCHAR(255) NULL,
+        remarks TEXT NULL,
+        location VARCHAR(255) NULL,
+        status VARCHAR(50) DEFAULT 'Approved',
         FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
       )
     `);
+
+    try {
+      await pool.query("ALTER TABLE attendance_logs ADD COLUMN reason VARCHAR(255) NULL");
+    } catch (e) {}
+    try {
+      await pool.query("ALTER TABLE attendance_logs ADD COLUMN remarks TEXT NULL");
+    } catch (e) {}
+    try {
+      await pool.query("ALTER TABLE attendance_logs ADD COLUMN location VARCHAR(255) NULL");
+    } catch (e) {}
+    try {
+      await pool.query("ALTER TABLE attendance_logs ADD COLUMN status VARCHAR(50) DEFAULT 'Approved'");
+    } catch (e) {}
 
     // 3. Documents Table
     await pool.query(`
@@ -182,7 +207,7 @@ const initializeDb = async () => {
     // Seed default admin if table is empty
     const [adminRows] = await pool.query('SELECT COUNT(*) AS count FROM admin_credentials');
     if (parseInt(adminRows[0].count) === 0) {
-      const defaultUser = process.env.ADMIN_USER || 'admin@cubiccode.io';
+      const defaultUser = process.env.ADMIN_USER || 'admin';
       const defaultPass = process.env.ADMIN_PASS || '123456';
       await pool.query(
         'INSERT INTO admin_credentials (username, password) VALUES (?, ?)',

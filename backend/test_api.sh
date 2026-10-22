@@ -18,7 +18,7 @@ echo "Response: $HEALTH"
 echo -e "\n[1/7] Testing Admin Authentication Login..."
 LOGIN_RESP=$(curl -s -c "$COOKIE_JAR" -X POST "$SERVER_URL/api/auth/login" \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin@cubiccode.io", "password":"123456"}')
+  -d '{"username":"admin", "password":"123456"}')
 echo "Response: $LOGIN_RESP"
 
 # 2. Test Fetch Employees (should be empty)

@@ -70,13 +70,48 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ============================================================
+// DEVELOPER IN-MEMORY LOG BUFFER (Last 500 lines)
+// ============================================================
+const MAX_LOG_BUFFER = 500;
+const devLogBuffer = [];
+
+function pushDevLog(type, message, meta = null) {
+  const entry = {
+    timestamp: new Date().toISOString(),
+    type,
+    message: typeof message === 'string' ? message : JSON.stringify(message),
+    meta
+  };
+  devLogBuffer.push(entry);
+  if (devLogBuffer.length > MAX_LOG_BUFFER) {
+    devLogBuffer.shift();
+  }
+}
+
+// Hook console.error and console.warn to capture stack traces in buffer
+const origConsoleError = console.error;
+const origConsoleWarn = console.warn;
+console.error = function (...args) {
+  origConsoleError.apply(console, args);
+  pushDevLog('ERROR', args.map(a => (a && a.stack) ? a.stack : (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' '));
+};
+console.warn = function (...args) {
+  origConsoleWarn.apply(console, args);
+  pushDevLog('WARN', args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+};
+
 // Request Logger
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
     const duration = Date.now() - start;
-    const logLevel = res.statusCode >= 400 ? 'WARN' : 'INFO';
-    console.log(`[${logLevel}] ${req.method} ${req.originalUrl} → ${res.statusCode} (${duration}ms)`);
+    const logLevel = res.statusCode >= 500 ? 'ERROR' : (res.statusCode >= 400 ? 'WARN' : 'INFO');
+    const logMsg = `[${logLevel}] ${req.method} ${req.originalUrl} → ${res.statusCode} (${duration}ms)`;
+    console.log(logMsg);
+    if (res.statusCode >= 400) {
+      pushDevLog(logLevel, logMsg, { ip: req.ip, user: req.session ? (req.session.username || req.session.employeeId) : null });
+    }
   });
   next();
 });
@@ -96,7 +131,21 @@ const staticOptions = {
 };
 app.use('/css', express.static(path.join(frontendDir, 'css'), staticOptions));
 app.use('/js', express.static(path.join(frontendDir, 'js'), staticOptions));
-app.use('/cubiccode_logo.png', express.static(path.join(frontendDir, 'cubiccode_logo.png')));
+app.get('/favicon.ico', (req, res) => {
+  const icoPath = path.join(frontendDir, 'favicon.ico');
+  if (fs.existsSync(icoPath)) {
+    res.setHeader('Content-Type', 'image/x-icon');
+    return res.sendFile(icoPath);
+  }
+  res.sendFile(path.join(frontendDir, 'musingquills_logo.png'));
+});
+app.get(['/favicon.png', '/apple-touch-icon.png', '/apple-touch-icon-precomposed.png'], (req, res) => {
+  res.sendFile(path.join(frontendDir, 'musingquills_logo.png'));
+});
+app.get('/musingquills_logo.png', (req, res) => res.sendFile(path.join(frontendDir, 'musingquills_logo.png')));
+app.get('/musingquills_horizontal_blue.png', (req, res) => res.sendFile(path.join(frontendDir, 'musingquills_horizontal_blue.png')));
+app.get('/musingquills_horizontal_gold.png', (req, res) => res.sendFile(path.join(frontendDir, 'musingquills_horizontal_gold.png')));
+app.use(express.static(frontendDir, staticOptions));
 
 // SQLite Session Store
 const sessionDbName = process.env.SESSION_DB_FILE ? path.basename(process.env.SESSION_DB_FILE) : 'sessions.db';
@@ -127,6 +176,40 @@ const requireAdmin = (req, res, next) => {
   }
 };
 
+const requireEmployee = async (req, res, next) => {
+  if (!req.session || (!req.session.employeeId && !req.session.isAdmin)) {
+    return res.status(401).json({ error: 'Unauthorized: Employee session required' });
+  }
+
+  // If logged in as an employee, verify their account is active
+  if (req.session.employeeId && !req.session.isAdmin) {
+    try {
+      const chk = await db.query('SELECT lifecycle_status FROM employees WHERE id = $1', [req.session.employeeId]);
+      if (chk.rows.length === 0) {
+        req.session.destroy(() => {});
+        return res.status(403).json({ error: 'Account not found. Portal access revoked.' });
+      }
+      const st = (chk.rows[0].lifecycle_status || '').trim().toLowerCase();
+      if (['exited', 'terminated', 'inactive'].includes(st)) {
+        req.session.destroy(() => {});
+        return res.status(403).json({ error: 'Account Deactivated: This employee is inactive/exited. Portal access revoked.' });
+      }
+    } catch (err) {
+      console.error('[AUTH] requireEmployee lifecycle check error:', err.message);
+    }
+  }
+
+  next();
+};
+
+const requireAuth = (req, res, next) => {
+  if (req.session && (req.session.isAdmin || req.session.employeeId)) {
+    next();
+  } else {
+    res.status(401).json({ error: 'Unauthorized: Authentication required' });
+  }
+};
+
 // ============================================================
 // DB INIT ON BOOT
 // ============================================================
@@ -145,6 +228,276 @@ app.get('/api/health', async (req, res) => {
   res.status(health.status === 'healthy' ? 200 : 503).json(health);
 });
 
+// Reverse Geocoding Proxy (resolves GPS coordinates to human-readable address/place name)
+app.get('/api/geo/reverse', async (req, res) => {
+  const { lat, lon } = req.query;
+  if (!lat || !lon) {
+    return res.status(400).json({ error: 'Latitude and Longitude required' });
+  }
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`;
+    const geoRes = await fetch(url, {
+      headers: {
+        'User-Agent': 'QuantumCLKAttendance/2.0 (contact@quantumclk.internal)',
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!geoRes.ok) {
+      throw new Error(`Reverse geocode returned status ${geoRes.status}`);
+    }
+
+    const data = await geoRes.json();
+    const addr = data.address || {};
+
+    const specific = addr.amenity || addr.building || addr.office || addr.shop || addr.leisure || '';
+    const street = [addr.house_number, addr.road || addr.pedestrian || addr.footway || addr.street].filter(Boolean).join(' ');
+    const locality = addr.suburb || addr.neighbourhood || addr.residential || addr.quarter || '';
+    const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || '';
+    const postcode = addr.postcode || '';
+    const state = addr.state || '';
+
+    const parts = [];
+    if (specific) parts.push(specific);
+    if (street && !parts.includes(street)) parts.push(street);
+    if (locality && !parts.includes(locality)) parts.push(locality);
+    if (city && !parts.includes(city)) parts.push(city);
+    if (postcode && !parts.includes(postcode)) parts.push(postcode);
+    if (state && !parts.includes(state)) parts.push(state);
+
+    const locationName = parts.length > 0
+      ? parts.join(', ')
+      : (data.display_name || `Location (${lat}, ${lon})`);
+
+    res.json({
+      success: true,
+      locationName,
+      fullAddress: data.display_name || locationName,
+      lat,
+      lon
+    });
+  } catch (err) {
+    console.error('[GEO] Reverse geocode error:', err.message);
+    res.json({
+      success: false,
+      error: err.message,
+      lat,
+      lon
+    });
+  }
+});
+
+// IP-based Location Fallback (for mobile browsers when GPS is blocked over plain HTTP)
+app.get('/api/geo/ip-lookup', async (req, res) => {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+    const ipRes = await fetch('http://ip-api.com/json', {
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json' }
+    });
+    clearTimeout(timeoutId);
+
+    if (ipRes.ok) {
+      const data = await ipRes.json();
+      if (data && data.status === 'success') {
+        const parts = [];
+        if (data.city) parts.push(data.city);
+        if (data.regionName && data.regionName !== data.city) parts.push(data.regionName);
+        if (data.country) parts.push(data.country);
+        const locationName = parts.join(', ');
+        return res.json({
+          success: true,
+          locationName: locationName || `${data.city || 'India'}`,
+          city: data.city || '',
+          region: data.regionName || '',
+          country: data.country || 'India',
+          lat: data.lat,
+          lon: data.lon,
+          source: 'ip'
+        });
+      }
+    }
+  } catch (err) {
+    // Ignore timeout / network failure
+  }
+
+  res.json({
+    success: true,
+    locationName: 'India',
+    source: 'fallback'
+  });
+});
+
+// ============================================================
+// DEVELOPER REMOTE DIAGNOSTICS & TELEMETRY API (Secret Protected)
+// ============================================================
+const os = require('os');
+const DEV_SECRET_KEY = process.env.DEV_SECRET_KEY || 'mq_dev_sec_987412356';
+
+// Middleware to authenticate developer requests
+const requireDevSecret = (req, res, next) => {
+  const providedKey = req.headers['x-dev-key'] || req.query.key || (req.body && req.body.key);
+  if (!providedKey || providedKey !== DEV_SECRET_KEY) {
+    return res.status(403).json({ error: 'Forbidden: Invalid or missing Developer Key' });
+  }
+  next();
+};
+
+// 1. Comprehensive System, DB & Process Diagnostics
+app.get('/api/dev/diagnostics', requireDevSecret, async (req, res) => {
+  // If requested in browser, redirect to the structured dashboard diagnostics tab
+  if (req.headers.accept && req.headers.accept.includes('text/html')) {
+    return res.redirect(`/api/dev/dashboard?key=${encodeURIComponent(req.query.key || '')}&tab=diagnostics`);
+  }
+
+  const mem = process.memoryUsage();
+  const dbHealth = await db.checkHealth();
+
+  // Test DB ping latency
+  const pingStart = Date.now();
+  let dbLatencyMs = null;
+  let poolStats = {};
+  try {
+    await db.query('SELECT 1');
+    dbLatencyMs = Date.now() - pingStart;
+
+    if (db.pool && db.pool.pool) {
+      poolStats = {
+        totalConnections: db.pool.pool._allConnections ? db.pool.pool._allConnections.length : 'N/A',
+        freeConnections: db.pool.pool._freeConnections ? db.pool.pool._freeConnections.length : 'N/A',
+        queueLength: db.pool.pool._connectionQueue ? db.pool.pool._connectionQueue.length : 'N/A'
+      };
+    }
+  } catch (e) {
+    dbLatencyMs = -1;
+  }
+
+  res.json({
+    success: true,
+    timestamp: new Date().toISOString(),
+    system: {
+      uptimeSeconds: Math.floor((Date.now() - startTime) / 1000),
+      uptimeHuman: `${Math.floor((Date.now() - startTime) / 3600000)}h ${Math.floor(((Date.now() - startTime) % 3600000) / 60000)}m`,
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      pid: process.pid,
+      cpus: os.cpus().length,
+      loadAverage: os.loadavg(),
+      freeMemMB: Math.round(os.freemem() / (1024 * 1024)),
+      totalMemMB: Math.round(os.totalmem() / (1024 * 1024))
+    },
+    processMemory: {
+      rssMB: (mem.rss / 1024 / 1024).toFixed(2),
+      heapTotalMB: (mem.heapTotal / 1024 / 1024).toFixed(2),
+      heapUsedMB: (mem.heapUsed / 1024 / 1024).toFixed(2),
+      externalMB: (mem.external / 1024 / 1024).toFixed(2)
+    },
+    database: {
+      status: dbHealth.status,
+      latencyMs: dbLatencyMs,
+      serverTime: dbHealth.serverTime,
+      pool: poolStats,
+      recordCounts: dbHealth.counts || {}
+    },
+    recentErrorSummary: {
+      totalBufferedLogs: devLogBuffer.length,
+      errorCount: devLogBuffer.filter(l => l.type === 'ERROR').length,
+      warnCount: devLogBuffer.filter(l => l.type === 'WARN').length
+    }
+  });
+});
+
+// 2. Real-Time In-Memory Error & Warning Log Stream
+app.get('/api/dev/logs', requireDevSecret, async (req, res) => {
+  // If requested in browser, redirect to the structured dashboard logs tab
+  if (req.headers.accept && req.headers.accept.includes('text/html')) {
+    return res.redirect(`/api/dev/dashboard?key=${encodeURIComponent(req.query.key || '')}&tab=logs`);
+  }
+
+  const lines = parseInt(req.query.lines || '100');
+  const level = (req.query.level || '').toUpperCase(); // 'ERROR', 'WARN', 'ATTENDANCE', etc.
+
+  let attEntries = [];
+  try {
+    const attRes = await db.query(
+      `SELECT id, employee_id, employee_name, action, timestamp, device, reason, location, remarks
+       FROM attendance_logs
+       ORDER BY timestamp DESC
+       LIMIT 30`
+    );
+    attEntries = attRes.rows.map(a => {
+      const locStr = a.location ? ` at ${a.location}` : '';
+      const reasonStr = a.reason ? ` (Reason: ${a.reason})` : '';
+      return {
+        timestamp: new Date(String(a.timestamp).replace(' ', 'T')).toISOString(),
+        type: 'ATTENDANCE',
+        message: `[ATTENDANCE] ${a.employee_name} (${a.employee_id}) punched ${a.action}${locStr}${reasonStr}`,
+        meta: {
+          employeeId: a.employee_id,
+          employeeName: a.employee_name,
+          action: a.action,
+          method: a.device || 'Office Scanner',
+          location: a.location || 'Office Terminal / On-Site',
+          reason: a.reason || 'Regular Shift',
+          remarks: a.remarks || null
+        }
+      };
+    });
+  } catch (e) {
+    console.warn('Could not load attendance entries for dev stream:', e.message);
+  }
+
+  let combined = [...devLogBuffer, ...attEntries];
+  combined.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+  let filtered = combined;
+  if (level) {
+    filtered = filtered.filter(l => l.type === level);
+  }
+
+  const result = filtered.slice(-Math.min(lines, 500)).reverse();
+
+  res.json({
+    success: true,
+    count: result.length,
+    logs: result
+  });
+});
+
+// 3. Client-Side Error Collector (Frontend Auto-Reporting)
+app.post('/api/dev/client-error', (req, res) => {
+  const { message, source, lineno, colno, stack, userId, url, userAgent } = req.body;
+  const clientLog = `[CLIENT_JS_ERR] ${message || 'Unknown error'} at ${source || 'inline'}:${lineno || '?'}:${colno || '?'}`;
+  
+  console.warn(clientLog);
+  pushDevLog('CLIENT_ERROR', clientLog, {
+    stack,
+    userId: userId || 'Anonymous',
+    url: url || req.headers.referer,
+    userAgent: userAgent || req.headers['user-agent'],
+    ip: req.ip
+  });
+
+  res.json({ success: true, recorded: true });
+});
+
+// 4. Unified All-in-One Developer Mission Control (Single Structured Page)
+app.get('/api/dev/dashboard', requireDevSecret, (req, res) => {
+  const secretKey = req.query.key || '';
+  try {
+    const templatePath = path.join(__dirname, 'dev_dashboard.html');
+    const html = fs.readFileSync(templatePath, 'utf8').replace(/\{\{KEY\}\}/g, secretKey);
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (err) {
+    res.status(500).send('Error loading dashboard: ' + err.message);
+  }
+});
+
 // Serve frontend HTML
 app.get(['/', '/FingerTrack_Enterprise_Demo.html', '/index.html'], (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
@@ -152,32 +505,92 @@ app.get(['/', '/FingerTrack_Enterprise_Demo.html', '/index.html'], (req, res) =>
 });
 
 // ============================================================
-// AUTH ENDPOINTS
+// AUTH ENDPOINTS (Admin & Individual Employee)
 // ============================================================
 
 app.post('/api/auth/login', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, portalType } = req.body;
 
   if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password are required' });
+    return res.status(400).json({ error: 'Username/Email and password are required' });
   }
 
-  try {
-    // Check admin_credentials table first
-    const result = await db.query(
-      'SELECT * FROM admin_credentials WHERE username = $1 AND password = $2',
-      [username, password]
-    );
+  const cleanUser = username.trim();
+  const cleanPass = password.trim();
 
-    if (result.rows.length > 0) {
-      req.session.isAdmin = true;
-      req.session.username = username;
-      console.log(`[AUTH] Login success: ${username}`);
-      return res.json({ success: true, user: { username } });
+  try {
+    // 1. If portalType is not explicitly 'employee', check admin credentials first
+    if (portalType !== 'employee') {
+      const adminResult = await db.query(
+        'SELECT * FROM admin_credentials WHERE username = $1 AND password = $2',
+        [cleanUser, cleanPass]
+      );
+
+      if (adminResult.rows.length > 0) {
+        req.session.isAdmin = true;
+        req.session.role = 'SUPER_ADMIN';
+        req.session.username = cleanUser;
+        req.session.employeeId = null;
+        console.log(`[AUTH] Admin login success: ${cleanUser}`);
+        pushDevLog('AUTH', `Admin user "${cleanUser}" signed in successfully`, { username: cleanUser, role: 'SUPER_ADMIN' });
+        return res.json({
+          success: true,
+          role: 'SUPER_ADMIN',
+          user: { username: cleanUser, systemRole: 'SUPER_ADMIN', firstName: 'System', lastName: 'Admin' }
+        });
+      }
     }
 
-    console.log(`[AUTH] Login failed: invalid credentials for "${username}"`);
-    res.status(400).json({ error: 'Invalid admin credentials' });
+    // 2. Check individual employee in employees table
+    const empResult = await db.query(
+      `SELECT id, fingerprint_id, first_name, last_name, email, phone, dob, joining_date,
+              designation, department, reporting_manager, shift_start, shift_end, salary_type,
+              lifecycle_status, password
+       FROM employees
+       WHERE (LOWER(email) = LOWER($1) OR id = $2 OR phone = $3)`,
+      [cleanUser, cleanUser, cleanUser]
+    );
+
+    if (empResult.rows.length > 0) {
+      const emp = empResult.rows[0];
+
+      // Block login if employee is deactivated / exited / terminated
+      const inactiveStatuses = ['exited', 'terminated', 'inactive'];
+      if (emp.lifecycle_status && inactiveStatuses.includes(emp.lifecycle_status.trim().toLowerCase())) {
+        console.log(`[AUTH] Login blocked: Employee account is deactivated (${emp.id}, status: ${emp.lifecycle_status})`);
+        pushDevLog('WARN', `Blocked portal login for deactivated/exited employee "${emp.id}" (${emp.first_name})`, { employeeId: emp.id, status: emp.lifecycle_status });
+        return res.status(403).json({ 
+          error: 'Account Deactivated: Your employee profile is inactive/exited. Web portal access has been revoked.' 
+        });
+      }
+
+      const validPass = (emp.password && emp.password.length > 0) ? emp.password : '123456';
+
+      if (cleanPass === validPass) {
+        req.session.isAdmin = false;
+        req.session.role = 'EMPLOYEE';
+        req.session.employeeId = emp.id;
+        req.session.employeeName = `${emp.first_name} ${emp.last_name || ''}`.trim();
+        req.session.username = emp.email || emp.id;
+
+        const safeEmp = { ...emp };
+        delete safeEmp.password;
+        safeEmp.systemRole = 'EMPLOYEE';
+
+        console.log(`[AUTH] Employee login success: ${emp.id} (${safeEmp.first_name})`);
+        pushDevLog('AUTH', `Employee ${safeEmp.first_name} ${safeEmp.last_name || ''} (${emp.id}) signed in successfully`, { employeeId: emp.id, name: safeEmp.first_name });
+        return res.json({
+          success: true,
+          role: 'EMPLOYEE',
+          employee: safeEmp,
+          user: safeEmp
+        });
+      }
+    }
+
+    console.log(`[AUTH] Login failed: invalid credentials for "${cleanUser}"`);
+    pushDevLog('WARN', `Failed sign-in attempt for ID/Email: "${cleanUser || '(empty)'}"`, { input: cleanUser || 'empty', ip: req.ip });
+    res.status(400).json({ error: 'Invalid Login ID, Email or Password.' });
   } catch (err) {
     console.error('[AUTH] Login error:', err.message);
     res.status(500).json({ error: 'Internal server error during authentication' });
@@ -193,11 +606,370 @@ app.post('/api/auth/logout', (req, res) => {
   });
 });
 
-app.get('/api/auth/session', (req, res) => {
-  if (req.session && req.session.isAdmin) {
-    res.json({ loggedIn: true, user: { username: req.session.username } });
-  } else {
+app.get('/api/auth/session', async (req, res) => {
+  try {
+    if (req.session && req.session.isAdmin) {
+      return res.json({
+        loggedIn: true,
+        role: 'SUPER_ADMIN',
+        user: { username: req.session.username, systemRole: 'SUPER_ADMIN', firstName: 'System', lastName: 'Admin' }
+      });
+    }
+
+    if (req.session && req.session.employeeId) {
+      const empResult = await db.query(
+        `SELECT id, fingerprint_id, first_name, last_name, email, phone, dob, joining_date,
+                designation, department, reporting_manager, shift_start, shift_end, salary_type,
+                lifecycle_status
+         FROM employees WHERE id = $1`,
+        [req.session.employeeId]
+      );
+
+      if (empResult.rows.length > 0) {
+        const emp = empResult.rows[0];
+        const inactiveStatuses = ['exited', 'terminated', 'inactive'];
+        if (emp.lifecycle_status && inactiveStatuses.includes((emp.lifecycle_status || '').trim().toLowerCase())) {
+          console.log(`[AUTH] Session terminated for deactivated/exited employee: ${emp.id}`);
+          req.session.destroy(() => {});
+          return res.json({ loggedIn: false, error: 'Account deactivated' });
+        }
+        emp.systemRole = 'EMPLOYEE';
+        return res.json({
+          loggedIn: true,
+          role: 'EMPLOYEE',
+          employee: emp,
+          user: emp
+        });
+      }
+    }
+
     res.json({ loggedIn: false });
+  } catch (err) {
+    console.error('[AUTH] Session check error:', err.message);
+    res.json({ loggedIn: false });
+  }
+});
+
+// ============================================================
+// EMPLOYEE SELF-SERVICE (ESS) ENDPOINTS
+// ============================================================
+
+// GET: Current Employee Dashboard Details & Today's Status
+app.get('/api/employee/dashboard', requireEmployee, async (req, res) => {
+  const empId = req.session.employeeId;
+  if (!empId) {
+    return res.status(400).json({ error: 'No employee associated with current session' });
+  }
+
+  try {
+    const empRes = await db.query(
+      `SELECT id, fingerprint_id, first_name, last_name, email, phone, dob, joining_date,
+              designation, department, reporting_manager, shift_start, shift_end, salary_type,
+              monthly_rate, hourly_rate, lifecycle_status, leaves_taken
+       FROM employees WHERE id = $1`,
+      [empId]
+    );
+
+    if (empRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Employee record not found' });
+    }
+
+    const employee = empRes.rows[0];
+    employee.systemRole = 'EMPLOYEE';
+
+    // Get today's attendance logs (only actual attendance punches: IN/OUT)
+    const todayLogsRes = await db.query(
+      `SELECT id, action, timestamp, device, reason, remarks, location, status
+       FROM attendance_logs
+       WHERE employee_id = $1 AND DATE(timestamp) = CURRENT_DATE() AND action IN ('IN', 'OUT')
+       ORDER BY timestamp ASC`,
+      [empId]
+    );
+
+    const logsToday = todayLogsRes.rows;
+    let checkedIn = false;
+    let firstIn = null;
+    let lastOut = null;
+    let lastAction = null;
+    let lastActionTime = null;
+    let hasCheckedInToday = false;
+
+    if (logsToday.length > 0) {
+      const lastLog = logsToday[logsToday.length - 1];
+      lastAction = lastLog.action;
+      lastActionTime = lastLog.timestamp;
+      checkedIn = (lastAction === 'IN');
+
+      const firstInLog = logsToday.find(l => l.action === 'IN');
+      if (firstInLog) {
+        firstIn = firstInLog.timestamp;
+        hasCheckedInToday = true;
+      }
+
+      const outLogs = logsToday.filter(l => l.action === 'OUT');
+      if (outLogs.length > 0) lastOut = outLogs[outLogs.length - 1].timestamp;
+    }
+
+    // Get recent attendance logs (last 50 entries, only IN/OUT)
+    const recentLogsRes = await db.query(
+      `SELECT id, action, timestamp, device, reason, remarks, location, status
+       FROM attendance_logs
+       WHERE employee_id = $1 AND action IN ('IN', 'OUT')
+       ORDER BY timestamp DESC
+       LIMIT 50`,
+      [empId]
+    );
+
+    res.json({
+      success: true,
+      employee,
+      today: {
+        checkedIn,
+        hasCheckedInToday,
+        lastAction,
+        lastActionTime,
+        firstIn,
+        lastOut,
+        logs: logsToday
+      },
+      recentLogs: recentLogsRes.rows
+    });
+  } catch (err) {
+    console.error('[EMPLOYEE] Dashboard error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST: Individual Employee Remote Check-In / Check-Out
+app.post('/api/employee/attendance', requireEmployee, async (req, res) => {
+  const empId = req.session.employeeId;
+  const { action, reason, remarks, location, coords } = req.body;
+
+  if (!empId) {
+    return res.status(400).json({ error: 'No employee ID in session' });
+  }
+
+  if (!action || !['IN', 'OUT'].includes(action.toUpperCase())) {
+    return res.status(400).json({ error: 'Action must be IN or OUT' });
+  }
+
+  const effectiveAction = action.toUpperCase();
+
+  // Check today's attendance logs for this employee
+  const todayLogsRes = await db.query(`
+    SELECT id, action, timestamp FROM attendance_logs 
+    WHERE employee_id = $1 AND DATE(timestamp) = CURRENT_DATE()
+    ORDER BY timestamp ASC
+  `, [empId]);
+
+  const hasTodayIn = todayLogsRes.rows.some(l => l.action === 'IN');
+  const hasTodayOut = todayLogsRes.rows.some(l => l.action === 'OUT');
+
+  if (hasTodayIn && hasTodayOut) {
+    return res.status(403).json({ 
+      error: 'Shift already completed for today. Further check-in and check-out are locked for today.' 
+    });
+  }
+
+  if (effectiveAction === 'IN') {
+    if (hasTodayIn) {
+      return res.status(403).json({ 
+        error: 'You have already checked in for today.' 
+      });
+    }
+  } else if (effectiveAction === 'OUT') {
+    if (!hasTodayIn) {
+      return res.status(400).json({ 
+        error: 'You have not checked in yet today. You must check in before checking out.' 
+      });
+    }
+    if (hasTodayOut) {
+      return res.status(403).json({ 
+        error: 'You have already checked out for today.' 
+      });
+    }
+  }
+
+  if (!reason || reason.trim().length === 0) {
+    return res.status(400).json({ error: 'Please select or provide a valid reason for remote check-in/out.' });
+  }
+
+  if (!location || location.trim().length === 0) {
+    return res.status(400).json({ error: 'Verified GPS location is required to submit remote attendance.' });
+  }
+
+  try {
+    const empRes = await db.query(
+      'SELECT id, first_name, last_name, shift_start FROM employees WHERE id = $1',
+      [empId]
+    );
+    if (empRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    const emp = empRes.rows[0];
+    const empName = `${emp.first_name} ${emp.last_name || ''}`.trim();
+
+    // Auto-close previous day forgotten checkout if checking in today
+    const lastLogRes = await db.query(`
+      SELECT action, timestamp FROM attendance_logs 
+      WHERE employee_id = $1 
+      ORDER BY timestamp DESC 
+      LIMIT 1
+    `, [empId]);
+
+    if (lastLogRes.rows.length > 0) {
+      const lastLog = lastLogRes.rows[0];
+      const lastLogDate = new Date(lastLog.timestamp);
+      const lastLogDateStr = lastLogDate.getFullYear() + '-' +
+        String(lastLogDate.getMonth() + 1).padStart(2, '0') + '-' +
+        String(lastLogDate.getDate()).padStart(2, '0');
+      const now = new Date();
+      const todayDateStr = now.getFullYear() + '-' +
+        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0');
+
+      if (lastLog.action === 'IN' && lastLogDateStr < todayDateStr && effectiveAction === 'IN') {
+        const autoOutTime = new Date(lastLog.timestamp);
+        autoOutTime.setTime(new Date(lastLog.timestamp).getTime() + 8.0 * 3600 * 1000);
+
+        await db.query(`
+          INSERT INTO attendance_logs (employee_id, employee_name, timestamp, action, device, reason, status)
+          VALUES ($1, $2, $3, 'OUT', 'AUTO_CHECKOUT', 'Auto-closed previous day shift', 'Approved')
+        `, [empId, empName, autoOutTime]);
+      }
+    }
+
+    // Check delay / late
+    let isLate = false;
+    let delayMinutes = 0;
+    if (effectiveAction === 'IN') {
+      const shiftStartStr = emp.shift_start ? emp.shift_start.slice(0, 5) : '09:00';
+      const [shiftH, shiftM] = shiftStartStr.split(':').map(Number);
+      const now = new Date();
+      const checkInMin = now.getHours() * 60 + now.getMinutes();
+      const shiftStartMin = shiftH * 60 + shiftM;
+      delayMinutes = checkInMin - shiftStartMin;
+      if (delayMinutes > 15) {
+        isLate = true;
+      }
+    }
+
+    // Insert attendance log with remote tag, reason, and notes
+    await db.query(
+      `INSERT INTO attendance_logs
+        (employee_id, employee_name, action, device, reason, remarks, location, status)
+       VALUES ($1, $2, $3, 'REMOTE_WEB', $4, $5, $6, 'Approved')`,
+      [
+        empId,
+        empName,
+        effectiveAction,
+        reason.trim(),
+        remarks ? remarks.trim() : null,
+        location ? location.trim() : null
+      ]
+    );
+
+    console.log(`[EMPLOYEE] Remote ${effectiveAction} logged for ${empName} (${empId}). Reason: "${reason}"`);
+    const formatDelayStr = (m) => {
+      const min = Math.round(Number(m) || 0);
+      if (min <= 0) return '0 min';
+      if (min < 60) return `${min} min`;
+      const hrs = Math.floor(min / 60);
+      const rem = min % 60;
+      return rem === 0 ? `${hrs} hr${hrs > 1 ? 's' : ''}` : `${hrs} hr${hrs > 1 ? 's' : ''} ${rem} min`;
+    };
+
+    pushDevLog(
+      'ATTENDANCE',
+      `[ATTENDANCE] ${empName} (${empId}) punched ${effectiveAction} — Reason: "${reason}"${isLate ? ` [LATE by ${formatDelayStr(delayMinutes)}]` : ''}`,
+      {
+        employeeId: empId,
+        employeeName: empName,
+        action: effectiveAction,
+        reason: reason,
+        location: location || 'Mobile / Web Portal',
+        remarks: remarks || null,
+        method: 'Remote Mobile / Web',
+        isLate,
+        late: isLate,
+        delayMinutes,
+        delay: delayMinutes
+      }
+    );
+
+    res.status(201).json({
+      success: true,
+      action: effectiveAction,
+      isLate,
+      late: isLate,
+      delayMinutes,
+      delay: delayMinutes,
+      delayFormatted: formatDelayStr(delayMinutes),
+      message: effectiveAction === 'IN'
+        ? (isLate ? `Checked in successfully (Late by ${formatDelayStr(delayMinutes)})` : 'Checked in successfully')
+        : 'Checked out successfully'
+    });
+  } catch (err) {
+    console.error('[EMPLOYEE] Attendance error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST: Employee Change Password
+app.post('/api/employee/change-password', requireEmployee, async (req, res) => {
+  const empId = req.session.employeeId;
+  const { currentPassword, newPassword } = req.body;
+
+  if (!empId) {
+    return res.status(400).json({ error: 'No employee session found' });
+  }
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current and new password are required' });
+  }
+  if (newPassword.length < 4) {
+    return res.status(400).json({ error: 'New password must be at least 4 characters' });
+  }
+
+  try {
+    const empRes = await db.query('SELECT password FROM employees WHERE id = $1', [empId]);
+    if (empRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    const currentActual = (empRes.rows[0].password && empRes.rows[0].password.length > 0)
+      ? empRes.rows[0].password
+      : '123456';
+
+    if (currentPassword !== currentActual) {
+      return res.status(400).json({ error: 'Incorrect current password' });
+    }
+
+    await db.query('UPDATE employees SET password = $1 WHERE id = $2', [newPassword, empId]);
+    console.log(`[EMPLOYEE] Password updated for ${empId}`);
+    res.json({ success: true, message: 'Password updated successfully' });
+  } catch (err) {
+    console.error('[EMPLOYEE] Change password error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST: Admin Reset Employee Password
+app.post('/api/employees/:id/password', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { password } = req.body;
+
+  if (!password || password.length < 4) {
+    return res.status(400).json({ error: 'Password must be at least 4 characters' });
+  }
+
+  try {
+    await db.query('UPDATE employees SET password = $1 WHERE id = $2', [password, id]);
+    console.log(`[ADMIN] Reset password for employee ${id}`);
+    res.json({ success: true, message: `Password updated for employee ${id}` });
+  } catch (err) {
+    console.error('[ADMIN] Reset employee password error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -294,6 +1066,7 @@ app.get('/api/employees', requireAdmin, async (req, res) => {
       lastName: emp.last_name,
       email: emp.email,
       phone: emp.phone,
+      password: emp.password || '123456',
       dateOfBirth: formatLocalDate(emp.dob),
       joiningDate: formatLocalDate(emp.joining_date),
       designation: emp.designation,
@@ -330,14 +1103,15 @@ app.get('/api/employees', requireAdmin, async (req, res) => {
 // POST: Add Employee
 app.post('/api/employees', requireAdmin, async (req, res) => {
   const emp = req.body;
+  const portalPassword = emp.password && emp.password.trim().length > 0 ? emp.password.trim() : '123456';
   try {
     await db.query(`
       INSERT INTO employees (
         id, fingerprint_id, first_name, last_name, email, phone, dob, joining_date,
         designation, department, reporting_manager, shift_start, shift_end, salary_type,
         monthly_rate, hourly_rate, lifecycle_status, probation_months, probation_unit, probation_end_date, confirmation_date,
-        notice_period_end_date, exit_date, exit_reason, enrolled, leaves_taken, payroll_start_date
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+        notice_period_end_date, exit_date, exit_reason, enrolled, leaves_taken, payroll_start_date, password
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
     `, [
       emp.id, emp.fingerprintId || null, emp.firstName, emp.lastName || '', emp.email, emp.phone || '',
       emp.dateOfBirth || null, emp.joiningDate, emp.designation || '', emp.department || '',
@@ -345,9 +1119,9 @@ app.post('/api/employees', requireAdmin, async (req, res) => {
       emp.monthlyRate || 0, emp.hourlyRate || 0, emp.lifecycleStatus || 'Probation',
       emp.probationMonths || 6, emp.probationUnit || 'months', emp.probationEndDate || null, emp.confirmationDate || null,
       emp.noticePeriodEndDate || null, emp.exitDate || null, emp.exitReason || '',
-      emp.enrolled ? 1 : 0, emp.leavesTaken || 0, emp.payrollStartDate || emp.joiningDate
+      emp.enrolled ? 1 : 0, emp.leavesTaken || 0, emp.payrollStartDate || emp.joiningDate, portalPassword
     ]);
-    console.log(`[EMPLOYEES] Added: ${emp.id} (${emp.firstName} ${emp.lastName || ''})`);
+    console.log(`[EMPLOYEES] Added: ${emp.id} (${emp.firstName} ${emp.lastName || ''}) with portal credentials`);
     res.status(201).json({ success: true, message: 'Employee added successfully' });
   } catch (err) {
     console.error('[EMPLOYEES] Add error:', err.message);
@@ -366,12 +1140,14 @@ app.put('/api/employees/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   const emp = req.body;
   try {
-    // Preserve existing fingerprint_id if not provided in the request
+    // Preserve existing fingerprint_id and password if not provided
     let fpId = emp.fingerprintId;
-    if (fpId === undefined || fpId === null || fpId === '') {
-      const existing = await db.query('SELECT fingerprint_id FROM employees WHERE id = $1', [id]);
+    let pwd = emp.password && emp.password.trim().length > 0 ? emp.password.trim() : null;
+    if (fpId === undefined || fpId === null || fpId === '' || !pwd) {
+      const existing = await db.query('SELECT fingerprint_id, password FROM employees WHERE id = $1', [id]);
       if (existing.rows.length > 0) {
-        fpId = existing.rows[0].fingerprint_id;
+        if (fpId === undefined || fpId === null || fpId === '') fpId = existing.rows[0].fingerprint_id;
+        if (!pwd) pwd = existing.rows[0].password || '123456';
       }
     }
 
@@ -382,8 +1158,8 @@ app.put('/api/employees/:id', requireAdmin, async (req, res) => {
         shift_start = $11, shift_end = $12, salary_type = $13, monthly_rate = $14, hourly_rate = $15,
         lifecycle_status = $16, probation_months = $17, probation_unit = $18, probation_end_date = $19, confirmation_date = $20,
         notice_period_end_date = $21, exit_date = $22, exit_reason = $23, enrolled = $24, leaves_taken = $25,
-        payroll_start_date = $26, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $27
+        payroll_start_date = $26, password = $27, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $28
     `, [
       fpId || null, emp.firstName, emp.lastName || '', emp.email, emp.phone || '',
       emp.dateOfBirth || null, emp.joiningDate, emp.designation || '', emp.department || '',
@@ -391,9 +1167,9 @@ app.put('/api/employees/:id', requireAdmin, async (req, res) => {
       emp.monthlyRate || 0, emp.hourlyRate || 0, emp.lifecycleStatus, emp.probationMonths || 6,
       emp.probationUnit || 'months', emp.probationEndDate || null, emp.confirmationDate || null, emp.noticePeriodEndDate || null,
       emp.exitDate || null, emp.exitReason || '', emp.enrolled ? 1 : 0, emp.leavesTaken || 0,
-      emp.payrollStartDate || emp.joiningDate, id
+      emp.payrollStartDate || emp.joiningDate, pwd || '123456', id
     ]);
-    console.log(`[EMPLOYEES] Updated: ${id}`);
+    console.log(`[EMPLOYEES] Updated: ${id} (portal credentials updated)`);
     res.json({ success: true, message: 'Employee updated successfully' });
   } catch (err) {
     console.error('[EMPLOYEES] Update error:', err.message);
@@ -401,22 +1177,38 @@ app.put('/api/employees/:id', requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE: Remove Employee
+// DELETE: Remove Employee (Soft Delete to preserve all past attendance & salary history)
 app.delete('/api/employees/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
+  const { permanent } = req.query;
   try {
-    // Delete associated document files physically
-    const docs = await db.query('SELECT file_path FROM documents WHERE employee_id = $1', [id]);
-    for (const doc of docs.rows) {
-      const fullPath = path.join(__dirname, doc.file_path);
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
+    if (permanent === 'true') {
+      const docs = await db.query('SELECT file_path FROM documents WHERE employee_id = $1', [id]);
+      for (const doc of docs.rows) {
+        const fullPath = path.join(__dirname, doc.file_path);
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+        }
       }
+      await db.query('DELETE FROM employees WHERE id = $1', [id]);
+      console.log(`[EMPLOYEES] Permanently deleted: ${id}`);
+      return res.json({ success: true, message: 'Employee permanently removed' });
     }
 
-    await db.query('DELETE FROM employees WHERE id = $1', [id]);
-    console.log(`[EMPLOYEES] Deleted: ${id}`);
-    res.json({ success: true, message: 'Employee removed successfully' });
+    // Default: Soft Delete (mark Exited, unenroll, but keep historical logs intact)
+    await db.query(`
+      UPDATE employees 
+      SET lifecycle_status = 'Exited', 
+          enrolled = false, 
+          fingerprint_id = NULL, 
+          exit_date = CURRENT_DATE,
+          exit_reason = 'Deactivated by Admin',
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+    `, [id]);
+
+    console.log(`[EMPLOYEES] Soft-deleted (marked Exited): ${id} (historical data preserved)`);
+    res.json({ success: true, message: 'Employee marked as Exited; all historical attendance records preserved' });
   } catch (err) {
     console.error('[EMPLOYEES] Delete error:', err.message);
     res.status(500).json({ error: err.message });
@@ -559,9 +1351,27 @@ app.delete('/api/salary-payments/:id', requireAdmin, async (req, res) => {
 // ============================================================
 
 app.get('/api/attendance', requireAdmin, async (req, res) => {
-
+  const { limit, startDate, endDate, employeeId } = req.query;
   try {
-    const result = await db.query('SELECT * FROM attendance_logs ORDER BY timestamp DESC LIMIT 500');
+    let sql = 'SELECT * FROM attendance_logs WHERE 1=1';
+    const params = [];
+    if (startDate) {
+      params.push(startDate);
+      sql += ` AND DATE(timestamp) >= $${params.length}`;
+    }
+    if (endDate) {
+      params.push(endDate);
+      sql += ` AND DATE(timestamp) <= $${params.length}`;
+    }
+    if (employeeId) {
+      params.push(employeeId);
+      sql += ` AND employee_id = $${params.length}`;
+    }
+    sql += ' ORDER BY timestamp DESC';
+    const rowLimit = limit ? parseInt(limit) : 5000;
+    sql += ` LIMIT ${rowLimit}`;
+
+    const result = await db.query(sql, params);
     res.json(result.rows);
   } catch (err) {
     console.error('[ATTENDANCE] Fetch error:', err.message);
@@ -757,6 +1567,34 @@ app.post('/api/hardware/log', async (req, res) => {
       }
     }
 
+    // Check if employee has already checked in and checked out for today
+    const todayLogs = await db.query(`
+      SELECT action, timestamp FROM attendance_logs 
+      WHERE employee_id = $1 AND DATE(timestamp) = CURRENT_DATE()
+      ORDER BY timestamp ASC
+    `, [empId]);
+
+    const hasTodayIn = todayLogs.rows.some(l => l.action === 'IN');
+    const hasTodayOut = todayLogs.rows.some(l => l.action === 'OUT');
+
+    if (hasTodayIn && hasTodayOut) {
+      console.log(`[HARDWARE] Re-entry blocked: ${empId} already checked in and checked out today`);
+      return res.status(200).json({
+        success: false,
+        completed: true,
+        message: 'Shift already completed for today',
+        late: false
+      });
+    }
+
+    if (hasTodayIn && !hasTodayOut && effectiveAction === 'IN') {
+      // Already checked in today, so this subsequent scan is their check-out!
+      effectiveAction = 'OUT';
+    } else if (!hasTodayIn && effectiveAction === 'OUT') {
+      // No check-in today yet, so first scan must be check-in
+      effectiveAction = 'IN';
+    }
+
     if (effectiveAction === 'IN') {
       const empDetails = await db.query(`SELECT shift_start FROM employees WHERE id = $1 LIMIT 1`, [empId]);
       const shiftStartStr = (empDetails.rows.length > 0 && empDetails.rows[0].shift_start) ? empDetails.rows[0].shift_start.slice(0, 5) : '09:00';
@@ -801,6 +1639,13 @@ app.post('/api/hardware/enroll', async (req, res) => {
   let isNew = false;
 
   try {
+    // 1. Clear this fingerprint_id slot from any existing employee first to avoid UNIQUE key conflict
+    await db.query(`
+      UPDATE employees 
+      SET fingerprint_id = NULL, enrolled = false 
+      WHERE fingerprint_id = $1
+    `, [fingerprint_id]);
+
     if (!empId && employee_name) {
       // Look up employee by matching first_name + last_name case-insensitively
       const cleanName = employee_name.trim().toLowerCase();
@@ -836,11 +1681,11 @@ app.post('/api/hardware/enroll', async (req, res) => {
         const firstName = nameParts[0] || 'Unknown';
         const lastName = nameParts.slice(1).join(' ') || '';
 
-        const placeholderEmail = `setup-${nextNum}@cubiccode.io`;
+        const placeholderEmail = `setup-${nextNum}@musingquills.in`;
         const tzOffset = new Date().getTimezoneOffset() * 60000;
         const todayDate = new Date(Date.now() - tzOffset).toISOString().split('T')[0];
 
-        // Insert placeholder profile
+        // Insert placeholder profile with freed-up fingerprint_id
         await db.query(`
           INSERT INTO employees (
             id, fingerprint_id, first_name, last_name, email, phone, dob, joining_date,
@@ -857,14 +1702,7 @@ app.post('/api/hardware/enroll', async (req, res) => {
       }
     }
 
-    // Clear slot from any other employee first to prevent UNIQUE constraint violation
-    await db.query(`
-      UPDATE employees 
-      SET fingerprint_id = NULL, enrolled = false 
-      WHERE fingerprint_id = $1 AND id != $2
-    `, [fingerprint_id, empId]);
-
-    if (!isNew) {
+    if (!isNew && empId) {
       const result = await db.query(`
         UPDATE employees
         SET enrolled = true, fingerprint_id = $1, updated_at = CURRENT_TIMESTAMP
@@ -908,17 +1746,27 @@ app.post('/api/hardware/delete', async (req, res) => {
     const empId = findRes.rows[0].id;
     const empName = `${findRes.rows[0].first_name} ${findRes.rows[0].last_name}`;
 
-    // 2. Delete employee from database
-    await db.query('DELETE FROM employees WHERE id = $1', [empId]);
+    // 2. Soft-delete employee: mark as Exited, clear fingerprint_id so slot can be reused,
+    // and PRESERVE all attendance_logs, punches, and salary records!
+    await db.query(`
+      UPDATE employees 
+      SET lifecycle_status = 'Exited', 
+          enrolled = false, 
+          fingerprint_id = NULL, 
+          exit_date = CURRENT_DATE,
+          exit_reason = 'Deleted via Biometric Hardware Device',
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+    `, [empId]);
 
     // 3. Log the deletion in attendance_logs for audit
     await db.query(`
-      INSERT INTO attendance_logs (employee_id, employee_name, action, device)
-      VALUES (NULL, $1, $2, $3)
-    `, [empName, 'DELETE', 'ESP32_READER_1']);
+      INSERT INTO attendance_logs (employee_id, employee_name, action, device, remarks)
+      VALUES ($1, $2, 'DELETE', 'ESP32_READER_1', 'Removed from biometric device; historical data preserved')
+    `, [empId, empName]);
 
-    console.log(`[HARDWARE] Deleted employee ${empName} (ID: ${empId}) via ESP32 deletion of slot #${fingerprint_id}`);
-    res.json({ success: true, message: `Employee ${empName} successfully deleted from website database` });
+    console.log(`[HARDWARE] Employee ${empName} (ID: ${empId}) deactivated & unlinked from slot #${fingerprint_id}. Past attendance records preserved.`);
+    res.json({ success: true, message: `Employee ${empName} removed from biometric device; historical attendance records preserved.` });
   } catch (err) {
     console.error('[HARDWARE] Delete error:', err.message);
     res.status(500).json({ error: err.message });
@@ -1552,7 +2400,7 @@ app.get('/payslip/:id', async (req, res) => {
       <body>
         <div class="payslip-card">
           <div class="header">
-            <h1 class="logo">CUBIC CODE</h1>
+            <h1 class="logo">MUSING QUILLS</h1>
             <p class="subtitle">Salary Payslip — ${currentMonth}</p>
           </div>
           
