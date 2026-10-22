@@ -1,5 +1,6 @@
-// ── LOGO ──────────────────────────────────────────────────
+// ── LOGO & ICONS ──────────────────────────────────────────
 #include "logo.h"
+#include "fp_icon.h"
 
 // ── LIBRARIES ─────────────────────────────────────────────
 #include <Adafruit_Fingerprint.h>
@@ -673,18 +674,61 @@ static void drawArcStroke(int16_t cx, int16_t cy, int16_t radius,
   }
 }
 
-static void drawMinimalFingerprint(int16_t cx, int16_t cy, uint16_t color) {
-  drawArcStroke(cx,     cy - 5, 39, 205, 495, color, 2);
-  drawArcStroke(cx,     cy - 5, 31, 200, 500, color, 2);
-  drawArcStroke(cx,     cy - 5, 23, 195, 505, color, 2);
-  drawArcStroke(cx,     cy - 5, 15, 190, 510, color, 2);
-  drawArcStroke(cx + 1, cy + 4,  7, 175, 520, color, 2);
-  tft.fillRect(cx - 45, cy + 22, 18, 22, C_BG);
-  tft.fillRect(cx + 27, cy + 22, 18, 22, C_BG);
-  tft.drawLine(cx - 14, cy + 17, cx - 18, cy + 38, color);
-  tft.drawLine(cx - 13, cy + 17, cx - 17, cy + 38, color);
-  tft.drawLine(cx + 14, cy + 17, cx + 18, cy + 35, color);
-  tft.drawLine(cx + 13, cy + 17, cx + 17, cy + 35, color);
+void drawFingerprintRow(int x, int y, int row, uint16_t color) {
+  if (row < 0 || row >= FP_ICON_H) return;
+  int lineStart = -1;
+  for (int i = 0; i < FP_ICON_W; i++) {
+    uint16_t byteIndex = row * 12 + (i / 8);
+    uint8_t b = pgm_read_byte(&fp_icon_bits[byteIndex]);
+    bool isPixel = (b & (0x80 >> (i % 8))) != 0;
+    if (isPixel) {
+      if (lineStart < 0) lineStart = i;
+    } else {
+      if (lineStart >= 0) {
+        tft.drawFastHLine(x + lineStart, y + row, i - lineStart, color);
+        lineStart = -1;
+      }
+    }
+  }
+  if (lineStart >= 0) {
+    tft.drawFastHLine(x + lineStart, y + row, FP_ICON_W - lineStart, color);
+  }
+}
+
+void drawFingerprintIcon(int x, int y, uint16_t color) {
+  for (int row = 0; row < FP_ICON_H; row++) {
+    drawFingerprintRow(x, y, row, color);
+  }
+}
+
+void animateScanLaser(int x, int y, uint16_t laserColor) {
+  int bLen = 10;
+  // Biometric cyber corner brackets framing 96x96 scanner
+  tft.drawFastHLine(x - 5, y - 5, bLen, laserColor);
+  tft.drawFastVLine(x - 5, y - 5, bLen, laserColor);
+  tft.drawFastHLine(x + FP_ICON_W + 5 - bLen, y - 5, bLen, laserColor);
+  tft.drawFastVLine(x + FP_ICON_W + 4, y - 5, bLen, laserColor);
+  tft.drawFastHLine(x - 5, y + FP_ICON_H + 4, bLen, laserColor);
+  tft.drawFastVLine(x - 5, y + FP_ICON_H + 5 - bLen, bLen, laserColor);
+  tft.drawFastHLine(x + FP_ICON_W + 5 - bLen, y + FP_ICON_H + 4, bLen, laserColor);
+  tft.drawFastVLine(x + FP_ICON_W + 4, y + FP_ICON_H + 5 - bLen, bLen, laserColor);
+
+  // Fast smooth optical sweep across fingerprint ridges
+  for (int row = 0; row < FP_ICON_H; row += 3) {
+    tft.drawFastHLine(x - 2, y + row, FP_ICON_W + 4, laserColor);
+    delay(4);
+    tft.drawFastHLine(x - 2, y + row, FP_ICON_W + 4, C_BG);
+    drawFingerprintRow(x, y, row, laserColor);
+    drawFingerprintRow(x, y, row + 1, laserColor);
+    drawFingerprintRow(x, y, row + 2, laserColor);
+  }
+
+  // Quick radar pulse ring
+  for (int r = 40; r <= 56; r += 4) {
+    tft.drawCircle(x + 48, y + 48, r, laserColor);
+    delay(7);
+    tft.drawCircle(x + 48, y + 48, r, C_BG);
+  }
 }
 
 bool drawBmpFromLittleFS(const char *filename, int x, int y, uint16_t tintColor, bool useTint = true) {
@@ -849,9 +893,7 @@ void printCenter(const char *s, int y, uint16_t col, uint8_t sz = 1,
 }
 
 void drawFpRing(uint16_t col, int cx = 160, int cy = 120) {
-  if (!drawBmpFromLittleFS("/fingerprint.bmp", cx - 48, cy - 48, col, true)) {
-    drawMinimalFingerprint(cx, cy, col);
-  }
+  drawFingerprintIcon(cx - 48, cy - 48, col);
 }
 
 void drawTick(int cx, int cy, uint16_t col) {
@@ -924,55 +966,86 @@ void drawStatusIndicator(const char *msg, uint16_t dotColor, int y = 172) {
   tft.print(msg);
 }
 
-void showMessage(const char *heading, const char *line1, const char *line2, uint16_t hColor = C_PRIMARY) {
+void drawResultCard(const char *heading, const char *line1, const char *line2, uint16_t badgeColor, bool ok) {
   tft.fillScreen(C_BG);
   tft.setTextWrap(false);
 
-  // Smooth expanding card animation
-  for (int h = 45; h <= 145; h += 35) {
-    fillCard(6, 18, 308, h, C_PANEL);
-    outlineCard(6, 18, 308, h, C_DIVIDER);
-    delay(10);
-  }
-  fillCard(6, 18, 308, 145, C_PANEL);
-  outlineCard(6, 18, 308, 145, C_DIVIDER);
+  // 1. Header (Standard unified terminal header)
+  tft.setTextColor(C_TEXT, C_BG);
+  tft.setTextSize(2);
+  tft.setCursor(16, 11);
+  tft.print("QuantumClk");
+  tft.setTextSize(1);
+  tft.setTextColor(C_SUBTEXT, C_BG);
+  tft.setCursor(17, 34);
+  tft.print("Biometric Attendance Terminal");
 
-  // Coloured heading bar (top 40 px of card)
-  tft.fillRoundRect(6, 18, 308, 40, 5, hColor);
-  tft.fillRect(6, 42, 308, 16, hColor);
+  drawLogo(264, 4, 52, 50, 6, C_PRIMARY);
+  tft.drawFastHLine(10, 58, 300, C_DIVIDER);
 
-  // Heading text
-  tft.setTextColor(C_WHITE, hColor);
+  // 2. Center Card (x=10, y=66, w=300, h=124)
+  fillCard(10, 66, 300, 124, C_PANEL);
+  outlineCard(10, 66, 300, 124, C_DIVIDER);
+
+  // Status Badge Pill inside card
+  int badgeW = strlen(heading) * 12 + 28;
+  if (badgeW < 140) badgeW = 140;
+  if (badgeW > 280) badgeW = 280;
+  int badgeX = (SCREEN_W - badgeW) / 2;
+  tft.fillRoundRect(badgeX, 76, badgeW, 28, 6, badgeColor);
+  tft.setTextColor(C_WHITE, badgeColor);
   tft.setTextSize(2);
   int tw = strlen(heading) * 12;
-  tft.setCursor((SCREEN_W - tw) / 2, 29);
+  tft.setCursor((SCREEN_W - tw) / 2, 82);
   tft.print(heading);
 
-  // Line 1
+  // Employee Name / Primary Line
   tft.setTextColor(C_TEXT, C_PANEL);
-  tft.setTextSize(2);
-  tw = strlen(line1) * 12;
-  if (tw > 280) {
-    tft.setTextSize(1);
-    tw = strlen(line1) * 6;
-  }
-  tft.setCursor((SCREEN_W - tw) / 2, 78);
+  int nameLen = strlen(line1);
+  uint8_t nSz = (nameLen > 18) ? 1 : 2;
+  tft.setTextSize(nSz);
+  tw = nameLen * (nSz == 2 ? 12 : 6);
+  tft.setCursor((SCREEN_W - tw) / 2, 116);
   tft.print(line1);
 
-  // Line 2
+  // Subtitle / Detail Line
   tft.setTextColor(C_SUBTEXT, C_PANEL);
   tft.setTextSize(1);
   tw = strlen(line2) * 6;
-  tft.setCursor((SCREEN_W - tw) / 2, 116);
+  tft.setCursor((SCREEN_W - tw) / 2, 140);
   tft.print(line2);
 
-  // Bottom status bar (same colour as heading)
-  tft.fillRoundRect(6, 183, 308, 34, 5, hColor);
-  tft.setTextColor(C_WHITE, hColor);
+  // Status indicator dot
+  if (ok) {
+    tft.fillCircle(105, 166, 4, C_SUCCESS);
+    tft.setTextColor(C_SUCCESS, C_PANEL);
+    tft.setTextSize(1);
+    tft.setCursor(117, 163);
+    tft.print("Cloud Synchronized");
+  } else {
+    tft.fillCircle(105, 166, 4, C_PRIMARY);
+    tft.setTextColor(C_PRIMARY, C_PANEL);
+    tft.setTextSize(1);
+    tft.setCursor(117, 163);
+    tft.print("Verification Notice");
+  }
+
+  // 3. Footer
+  tft.fillRect(0, 198, 320, 42, C_PANEL);
+  tft.drawFastHLine(0, 198, 320, C_DIVIDER);
+
+  char ts[32];
+  clk.fmtFull(ts, sizeof(ts));
+  tft.setTextColor(C_SUBTEXT, C_PANEL);
   tft.setTextSize(1);
-  tw = strlen(heading) * 6;
-  tft.setCursor((SCREEN_W - tw) / 2, 198);
-  tft.print(heading);
+  tw = strlen(ts) * 6;
+  tft.setCursor((SCREEN_W - tw) / 2, 214);
+  tft.print(ts);
+}
+
+void showMessage(const char *heading, const char *line1, const char *line2, uint16_t hColor = C_PRIMARY) {
+  bool ok = (hColor == C_SUCCESS || strstr(heading, "GRANTED") || strstr(heading, "ENROLLED") || strstr(heading, "SUCCESS") || strstr(heading, "OK"));
+  drawResultCard(heading, line1, line2, hColor, ok);
 }
 
 void showResult(const char *l1, const char *l2, bool ok, uint16_t icol = 0) {
@@ -980,22 +1053,46 @@ void showResult(const char *l1, const char *l2, bool ok, uint16_t icol = 0) {
     icol = C_PRIMARY;
 
   const char *heading = ok ? "ATTENDANCE" : "NOTICE";
-  if (strstr(l2, "Completed") || strstr(l2, "Shift Completed")) heading = "SHIFT ENDED";
-  else if (strstr(l2, "Offline") || strstr(l2, "Not Logged")) heading = "SERVER OFFLINE";
-  else if (strstr(l2, "Disconnected")) heading = "NO WI-FI";
-  else if (strstr(l2, "Database")) heading = "NOT FOUND";
-  else if (strstr(l2, "Verifying") || strstr(l2, "Syncing") || strstr(l2, "Connecting")) heading = "VERIFYING";
-  else if (strstr(l2, "Check-in") || strstr(l2, "CHECK-IN") || strstr(l2, "Checked in")) heading = "CHECK-IN";
-  else if (strstr(l2, "Check-out") || strstr(l2, "CHECK-OUT") || strstr(l2, "Checked out")) heading = "CHECK-OUT";
-  else if (strcmp(l1, "ADMIN SLOT") == 0) heading = "ADMIN ONLY";
-  else if (strcmp(l1, "NOT RECOGNISED") == 0) heading = "ACCESS DENIED";
-  else if (strcmp(l1, "SYNC FAILED") == 0) heading = "OFFLINE";
-  else if (strcmp(l1, "ENROLLED!") == 0) heading = "ENROLLED";
-  else if (strcmp(l1, "DELETED") == 0) heading = "DELETED";
-  else if (ok) heading = "SUCCESS";
-  else heading = l1;
+  uint16_t badgeColor = icol;
 
-  showMessage(heading, l1, l2, icol);
+  if (strstr(l2, "Completed") || strstr(l2, "Shift Completed")) {
+    heading = "SHIFT ENDED";
+    badgeColor = C_SUBTEXT;
+  } else if (strstr(l2, "Offline") || strstr(l2, "Not Logged")) {
+    heading = "SERVER OFFLINE";
+    badgeColor = C_PRIMARY;
+  } else if (strstr(l2, "Disconnected")) {
+    heading = "NO WI-FI";
+    badgeColor = C_PRIMARY;
+  } else if (strstr(l2, "Database")) {
+    heading = "NOT FOUND";
+    badgeColor = C_PRIMARY;
+  } else if (strstr(l2, "Verifying") || strstr(l2, "Syncing") || strstr(l2, "Connecting")) {
+    heading = "VERIFYING";
+    badgeColor = C_PRIMARY;
+  } else if (strstr(l2, "LATE") || strstr(l1, "LATE")) {
+    heading = "LATE CHECK-IN";
+    badgeColor = C_PRIMARY;
+  } else if (strstr(l2, "Check-in") || strstr(l2, "CHECK-IN") || strstr(l2, "Checked in")) {
+    heading = "CHECKED IN";
+    badgeColor = C_SUCCESS;
+  } else if (strstr(l2, "Check-out") || strstr(l2, "CHECK-OUT") || strstr(l2, "Checked out")) {
+    heading = "CHECKED OUT";
+    badgeColor = C_SUBTEXT;
+  } else if (strcmp(l1, "ADMIN SLOT") == 0) {
+    heading = "ADMIN ONLY";
+    badgeColor = C_PRIMARY;
+  } else if (strcmp(l1, "NOT RECOGNISED") == 0) {
+    heading = "NOT RECOGNISED";
+    badgeColor = C_PRIMARY;
+  } else if (ok) {
+    heading = "SUCCESS";
+    badgeColor = C_SUCCESS;
+  } else {
+    heading = l1;
+  }
+
+  drawResultCard(heading, l1, l2, badgeColor, ok);
 }
 
 void showDeleteConfirmation(const char *name) {
@@ -1044,10 +1141,8 @@ void drawHomeScreen() {
   drawLogo(264, 4, 52, 50, 6, C_PRIMARY);
   tft.drawFastHLine(10, 58, 300, C_DIVIDER);
 
-  // Centered fingerprint from LittleFS fingerprint.bmp (with fallback)
-  if (!drawBmpFromLittleFS("/fingerprint.bmp", 112, 66, C_TEXT, true)) {
-    drawMinimalFingerprint(160, 115, C_TEXT);
-  }
+  // Centered high-resolution 96x96 fingerprint directly from PROGMEM
+  drawFingerprintIcon(112, 66, C_TEXT);
 
   // Ready to scan state
   drawStatusIndicator("Ready to scan", C_SUCCESS, 172);
@@ -1088,45 +1183,21 @@ void drawHomeScreen() {
 
 void drawScanningScreen(const char *msg = "Verifying...") {
   currentScreen = SCR_SCANNING;
-  tft.fillScreen(C_BG);
-  tft.setTextWrap(false);
-
-  // Header
-  tft.setTextColor(C_TEXT, C_BG);
-  tft.setTextSize(2);
-  tft.setCursor(16, 11);
-  tft.print("QuantumClk");
-  tft.setTextSize(1);
-  tft.setTextColor(C_SUBTEXT, C_BG);
-  tft.setCursor(17, 34);
-  tft.print("Biometric Attendance");
-
-  drawLogo(264, 4, 52, 50, 6, C_PRIMARY);
-  tft.drawFastHLine(10, 58, 300, C_DIVIDER);
-
-  if (!drawBmpFromLittleFS("/fingerprint.bmp", 112, 66, C_PRIMARY, true)) {
-    drawMinimalFingerprint(160, 115, C_PRIMARY);
-  }
-
-  // Futuristic animated optical biometric pulse beam
-  for (int r = 50; r <= 56; r += 2) {
-    tft.drawCircle(160, 114, r, C_PRIMARY);
-    delay(10);
-  }
-
   drawStatusIndicator(msg, C_PRIMARY, 172);
+  animateScanLaser(112, 66, C_PRIMARY);
 }
 
 void runAttendanceScan() {
-  drawScanningScreen("Verifying...");
+  currentScreen = SCR_SCANNING;
+
+  // 1. Futuristic laser scan beam sweeping down through fingerprint ridges
+  drawStatusIndicator("Scanning fingerprint...", C_PRIMARY, 172);
+  animateScanLaser(112, 66, C_PRIMARY);
 
   if (finger.image2Tz() != FINGERPRINT_OK) {
-    drawHeader("Attendance");
-    fillCard(10, 58, 300, 100, C_WHITE);
-    outlineCard(10, 58, 300, 100, C_DIVIDER);
-    printCenter("Poor finger placement ", 78, C_TEXT, 2, C_WHITE);
-    printCenter("Lift and try again", 102, C_SUBTEXT, 1, C_WHITE);
-    delay(1400);
+    drawStatusIndicator("Poor placement - Lift & try again", C_PRIMARY, 172);
+    playBeep(700, 100);
+    delay(1200);
     drawHomeScreen();
     return;
   }
@@ -1171,10 +1242,14 @@ void runAttendanceScan() {
       return;
     }
 
-    const char *desiredAction = (!checkedIn[id]) ? "IN" : "OUT";
-    showResult(name, "Verifying attendance...", true, C_PRIMARY);
+    // Biometric match verified! Illuminate fingerprint in emerald green and show connecting badge
+    drawFingerprintIcon(112, 66, C_SUCCESS);
+    char connectingMsg[48];
+    snprintf(connectingMsg, sizeof(connectingMsg), "Verified: %s", name);
+    drawStatusIndicator(connectingMsg, C_SUCCESS, 172);
 
-    // Perform HTTP sync request - MUST BE RECORDED IN WEBSITE DATABASE
+    // Perform HTTP sync request - RECORDED IN CLOUD DATABASE
+    const char *desiredAction = (!checkedIn[id]) ? "IN" : "OUT";
     String confirmedAction = desiredAction;
     int syncRes = sendAttendanceLogToServer(id, desiredAction, name, &confirmedAction);
 
@@ -1194,7 +1269,7 @@ void runAttendanceScan() {
       if (confirmedAction == "IN") {
         saveCheckedIn(id, true);
         if (syncRes == 1) {
-          showResult(name, "LATE CHECK-IN!", true, C_PRIMARY);
+          showResult(name, "Late check-in recorded", true, C_PRIMARY);
         } else {
           showResult(name, "Checked in successfully", true, C_SUCCESS);
         }
@@ -1215,7 +1290,6 @@ void runAttendanceScan() {
       else if (syncRes == -3) errMsg = "Not in Web Database";
 
       showResult(name, errMsg, false, C_PRIMARY);
-      // Clean subtle double-beep alert (distinct from voice audio)
       playBeep(700, 120);
       delay(80);
       playBeep(700, 120);
@@ -1227,7 +1301,8 @@ void runAttendanceScan() {
     }
   } else {
     sfxInvalid();
-    showResult("NOT RECOGNISED", "Enrol this employee first", false, C_SUBTEXT);
+    drawFingerprintIcon(112, 66, C_PRIMARY);
+    showResult("NOT RECOGNISED", "Please enrol with admin", false, C_PRIMARY);
     Serial.println("ATTENDANCE: No match");
   }
   fpWaitLift();
@@ -1787,7 +1862,7 @@ void runEnroll() {
           step1_ok = true;
           break;
         } else {
-          showResult("IMAGE ERROR", "Try scanning again", false, C_SUBTEXT);
+          showResult("Poor Image Placement", "Try scanning again", false, C_SUBTEXT);
           delay(2000);
           break;
         }
@@ -1834,7 +1909,7 @@ void runEnroll() {
           step2_ok = true;
           break;
         } else {
-          showResult("IMAGE ERROR", "Try scanning again", false, C_SUBTEXT);
+          showResult("Poor Image Placement", "Try scanning again", false, C_SUBTEXT);
           delay(2000);
           break;
         }
