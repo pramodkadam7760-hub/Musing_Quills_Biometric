@@ -1453,8 +1453,8 @@ app.post('/api/hardware/log', async (req, res) => {
     return res.status(400).json({ error: 'Missing employee_id/fingerprint_id or action parameter' });
   }
 
-  if (!['IN', 'OUT'].includes(action.toUpperCase())) {
-    return res.status(400).json({ error: 'Action must be IN or OUT' });
+  if (!['IN', 'OUT', 'AUTO'].includes(action.toUpperCase())) {
+    return res.status(400).json({ error: 'Action must be IN, OUT, or AUTO' });
   }
 
   let empId = employee_id;
@@ -1587,11 +1587,11 @@ app.post('/api/hardware/log', async (req, res) => {
       });
     }
 
-    if (hasTodayIn && !hasTodayOut && effectiveAction === 'IN') {
-      // Already checked in today, so this subsequent scan is their check-out!
+    if (hasTodayIn && !hasTodayOut) {
+      // Already checked in today, so this subsequent scan must be their check-out!
       effectiveAction = 'OUT';
-    } else if (!hasTodayIn && effectiveAction === 'OUT') {
-      // No check-in today yet, so first scan must be check-in
+    } else if (!hasTodayIn) {
+      // No check-in today yet, so first scan must be check-in!
       effectiveAction = 'IN';
     }
 

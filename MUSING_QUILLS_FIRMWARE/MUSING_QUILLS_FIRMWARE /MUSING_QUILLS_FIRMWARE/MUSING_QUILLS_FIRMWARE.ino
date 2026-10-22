@@ -984,6 +984,7 @@ void showResult(const char *l1, const char *l2, bool ok, uint16_t icol = 0) {
   else if (strstr(l2, "Offline") || strstr(l2, "Not Logged")) heading = "SERVER OFFLINE";
   else if (strstr(l2, "Disconnected")) heading = "NO WI-FI";
   else if (strstr(l2, "Database")) heading = "NOT FOUND";
+  else if (strstr(l2, "Verifying") || strstr(l2, "Syncing") || strstr(l2, "Connecting")) heading = "VERIFYING";
   else if (strstr(l2, "Check-in") || strstr(l2, "CHECK-IN") || strstr(l2, "Checked in")) heading = "CHECK-IN";
   else if (strstr(l2, "Check-out") || strstr(l2, "CHECK-OUT") || strstr(l2, "Checked out")) heading = "CHECK-OUT";
   else if (strcmp(l1, "ADMIN SLOT") == 0) heading = "ADMIN ONLY";
@@ -1171,7 +1172,7 @@ void runAttendanceScan() {
     }
 
     const char *desiredAction = (!checkedIn[id]) ? "IN" : "OUT";
-    showResult(name, (strcmp(desiredAction, "IN") == 0) ? "Syncing check-in..." : "Syncing check-out...", true, C_PRIMARY);
+    showResult(name, "Verifying attendance...", true, C_PRIMARY);
 
     // Perform HTTP sync request - MUST BE RECORDED IN WEBSITE DATABASE
     String confirmedAction = desiredAction;
