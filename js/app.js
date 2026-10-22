@@ -95,7 +95,7 @@ let holidaysList = [];
 
 // ---- Audit Logs ----
 let auditLogs = [
-  { id: 'AL-1001', timestamp: new Date(Date.now() - 86400000).toISOString(), user: 'admin@musingquills.in', action: 'System Config', details: 'Updated late penalty policy' }
+  { id: 'AL-1001', timestamp: new Date(Date.now() - 86400000).toISOString(), user: 'admin@musingquills.com', action: 'System Config', details: 'Updated late penalty policy' }
 ];
 
 let notifications = [];
@@ -1061,7 +1061,7 @@ async function initAuth() {
         id: 'EMP-ADM-1000',
         firstName: 'System',
         lastName: 'Admin',
-        email: 'admin@musingquills.in',
+        email: 'admin@musingquills.com',
         systemRole: 'SUPER_ADMIN'
       };
       document.getElementById('login-screen').style.display = 'none';
@@ -1097,7 +1097,7 @@ async function initAuth() {
             id: 'EMP-ADM-1000',
             firstName: 'System',
             lastName: 'Admin',
-            email: 'admin@musingquills.in',
+            email: 'admin@musingquills.com',
             systemRole: 'SUPER_ADMIN'
           };
           document.getElementById('login-screen').style.display = 'none';
