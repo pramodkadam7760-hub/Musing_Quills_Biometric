@@ -1148,20 +1148,23 @@ void drawHomeScreen() {
   // Centered high-resolution 96x96 fingerprint directly from PROGMEM
   drawFingerprintIcon(112, 66, C_TEXT);
 
-  // Ready to scan state
-  drawStatusIndicator("Ready to scan", C_SUCCESS, 172);
+  const bool wifiOk = (WiFi.status() == WL_CONNECTED);
+  if (wifiOk) {
+    drawStatusIndicator("Ready to scan", C_SUCCESS, 172);
+  } else {
+    drawStatusIndicator("Wi-Fi Required - Scan Disabled", C_PRIMARY, 172);
+  }
 
   // Three-part footer (y=198 to 240, h=42)
   tft.fillRect(0, 198, 320, 42, C_PANEL);
   tft.drawFastHLine(0, 198, 320, C_DIVIDER);
 
-  const bool wifiOk = (WiFi.status() == WL_CONNECTED);
-  const uint16_t wifiCol = wifiOk ? C_SUCCESS : C_SUBTEXT;
+  const uint16_t wifiCol = wifiOk ? C_SUCCESS : C_PRIMARY;
   drawWifiIcon(24, 218, wifiCol);
   tft.setTextColor(wifiCol, C_PANEL);
   tft.setTextSize(1);
   tft.setCursor(38, 215);
-  tft.print(wifiOk ? "Connected" : "Offline");
+  tft.print(wifiOk ? "Connected" : "No Wi-Fi");
 
   tft.drawFastVLine(105, 204, 29, C_DIVIDER);
   tft.drawFastVLine(232, 204, 29, C_DIVIDER);
@@ -1192,6 +1195,16 @@ void drawScanningScreen(const char *msg = "Verifying...") {
 }
 
 void runAttendanceScan() {
+  // Device requires active Wi-Fi — DO NOT run attendance if Wi-Fi is unavailable
+  if (WiFi.status() != WL_CONNECTED) {
+    playBeep(700, 150);
+    showResult("NO WI-FI", "Device cannot run without Wi-Fi", false, C_PRIMARY);
+    fpWaitLift();
+    delay(2000);
+    drawHomeScreen();
+    return;
+  }
+
   currentScreen = SCR_SCANNING;
 
   // 1. Futuristic laser scan beam sweeping down through fingerprint ridges
@@ -2445,11 +2458,11 @@ void setup() {
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("\nWiFi Connected! IP: %s\n", WiFi.localIP().toString().c_str());
     configTime(19800, 0, "pool.ntp.org", "time.google.com");
-    printCenter("Online Mode Active ✓", 200, C_SUCCESS, 1, C_BG);
+    printCenter("Wi-Fi Connected ✓", 200, C_SUCCESS, 1, C_BG);
     delay(1000);
   } else {
     Serial.println("\nWiFi Connection Timeout!");
-    printCenter("WiFi Offline. Server Required.", 200, C_PRIMARY, 1, C_BG);
+    printCenter("No Wi-Fi! Device requires Wi-Fi.", 200, C_PRIMARY, 1, C_BG);
     delay(2000);
   }
 
@@ -2467,6 +2480,8 @@ void setup() {
   }
 }
 
+unsigned long lastWifiCheck = 0;
+
 void loop() {
   handleSerial();
   TPoint t = readTouch();
@@ -2474,10 +2489,31 @@ void loop() {
     if (currentScreen == SCR_HOME)
       handleHomeTouch(t);
   }
+
+  // Periodic Wi-Fi watchdog & auto-reconnect
+  if (millis() - lastWifiCheck > 4000UL) {
+    lastWifiCheck = millis();
+    if (WiFi.status() != WL_CONNECTED) {
+      WiFi.reconnect();
+    }
+  }
+
   if (currentScreen == SCR_HOME) {
-    int r = finger.getImage();
-    if (r == FINGERPRINT_OK) {
-      runAttendanceScan();
+    if (WiFi.status() == WL_CONNECTED) {
+      int r = finger.getImage();
+      if (r == FINGERPRINT_OK) {
+        runAttendanceScan();
+      }
+    } else {
+      // Disallow scanning if Wi-Fi is disconnected
+      int r = finger.getImage();
+      if (r == FINGERPRINT_OK) {
+        playBeep(700, 150);
+        showResult("NO WI-FI", "Device cannot run without Wi-Fi", false, C_PRIMARY);
+        fpWaitLift();
+        delay(2000);
+        drawHomeScreen();
+      }
     }
   }
   delay(20);
