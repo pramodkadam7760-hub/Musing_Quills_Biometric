@@ -844,7 +844,7 @@ app.post('/api/employee/attendance', requireEmployee, async (req, res) => {
     let isLate = false;
     let delayMinutes = 0;
     if (effectiveAction === 'IN') {
-      const shiftStartStr = emp.shift_start ? emp.shift_start.slice(0, 5) : '09:00';
+      const shiftStartStr = emp.shift_start ? emp.shift_start.slice(0, 5) : '10:00';
       const [shiftH, shiftM] = shiftStartStr.split(':').map(Number);
       const now = new Date();
       const checkInMin = now.getHours() * 60 + now.getMinutes();
@@ -1072,8 +1072,8 @@ app.get('/api/employees', requireAdmin, async (req, res) => {
       designation: emp.designation,
       department: emp.department,
       reportingManager: emp.reporting_manager,
-      shiftStart: emp.shift_start ? emp.shift_start.slice(0, 5) : '09:00',
-      shiftEnd: emp.shift_end ? emp.shift_end.slice(0, 5) : '18:00',
+      shiftStart: emp.shift_start ? emp.shift_start.slice(0, 5) : '10:00',
+      shiftEnd: emp.shift_end ? emp.shift_end.slice(0, 5) : '17:00',
       salaryType: emp.salary_type,
       monthlyRate: parseFloat(emp.monthly_rate || 0),
       hourlyRate: parseFloat(emp.hourly_rate || 0),
@@ -1473,7 +1473,7 @@ app.post('/api/hardware/log', async (req, res) => {
         empId = findRes.rows[0].id;
         empName = `${findRes.rows[0].first_name} ${findRes.rows[0].last_name}`;
 
-        const shiftStartStr = findRes.rows[0].shift_start ? findRes.rows[0].shift_start.slice(0, 5) : '09:00';
+        const shiftStartStr = findRes.rows[0].shift_start ? findRes.rows[0].shift_start.slice(0, 5) : '10:00';
         const [shiftH, shiftM] = shiftStartStr.split(':').map(Number);
         const now = new Date();
         const checkInMin = now.getHours() * 60 + now.getMinutes();
@@ -1500,7 +1500,7 @@ app.post('/api/hardware/log', async (req, res) => {
           await db.query(`UPDATE employees SET fingerprint_id = $1, enrolled = true WHERE id = $2`, [fingerprint_id, empId]);
           console.log(`[HARDWARE] Auto-relinked fingerprint #${fingerprint_id} → ${empId} (${empName})`);
 
-          const shiftStartStr = nameRes.rows[0].shift_start ? nameRes.rows[0].shift_start.slice(0, 5) : '09:00';
+          const shiftStartStr = nameRes.rows[0].shift_start ? nameRes.rows[0].shift_start.slice(0, 5) : '10:00';
           const [shiftH, shiftM] = shiftStartStr.split(':').map(Number);
           const now = new Date();
           const checkInMin = now.getHours() * 60 + now.getMinutes();
@@ -1597,7 +1597,7 @@ app.post('/api/hardware/log', async (req, res) => {
 
     if (effectiveAction === 'IN') {
       const empDetails = await db.query(`SELECT shift_start FROM employees WHERE id = $1 LIMIT 1`, [empId]);
-      const shiftStartStr = (empDetails.rows.length > 0 && empDetails.rows[0].shift_start) ? empDetails.rows[0].shift_start.slice(0, 5) : '09:00';
+      const shiftStartStr = (empDetails.rows.length > 0 && empDetails.rows[0].shift_start) ? empDetails.rows[0].shift_start.slice(0, 5) : '10:00';
       const [shiftH, shiftM] = shiftStartStr.split(':').map(Number);
       const now = new Date();
       const checkInMin = now.getHours() * 60 + now.getMinutes();
@@ -1694,7 +1694,7 @@ app.post('/api/hardware/enroll', async (req, res) => {
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
         `, [
           empId, fingerprint_id, firstName, lastName, placeholderEmail, '', null, todayDate,
-          'Pending Setup', 'General', 'System Admin', '09:00', '18:00', 'monthly',
+          'Pending Setup', 'General', 'System Admin', '10:00', '17:00', 'monthly',
           0, 0, 'Probation', 1, 0
         ]);
 
@@ -2052,8 +2052,8 @@ app.get('/payslip/:id', async (req, res) => {
       phone: emp.phone,
       joiningDate: formatLocalDate(emp.joining_date),
       payrollStartDate: formatLocalDate(emp.payroll_start_date),
-      shiftStart: emp.shift_start ? emp.shift_start.slice(0, 5) : '09:00',
-      shiftEnd: emp.shift_end ? emp.shift_end.slice(0, 5) : '18:00',
+      shiftStart: emp.shift_start ? emp.shift_start.slice(0, 5) : '10:00',
+      shiftEnd: emp.shift_end ? emp.shift_end.slice(0, 5) : '17:00',
       salaryType: emp.salary_type,
       monthlyRate: parseFloat(emp.monthly_rate || 0),
       hourlyRate: parseFloat(emp.hourly_rate || 0),
