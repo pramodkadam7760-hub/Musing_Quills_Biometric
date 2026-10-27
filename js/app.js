@@ -378,13 +378,17 @@ function compileAttendanceData(logs) {
           status = 'Half Day';
         }
       } else if (login) {
-        status = 'Present';
         const inDate = checkInLog && checkInLog.timestamp ? new Date(checkInLog.timestamp) : null;
+        const isHalfDayReason = (checkInLog && (
+          (checkInLog.reason && /half[\s_-]?day/i.test(checkInLog.reason)) ||
+          (checkInLog.remarks && /half[\s_-]?day/i.test(checkInLog.remarks))
+        ));
+        status = isHalfDayReason ? 'Half Day' : 'Present';
         const loginMin = parseTimeToMinutes(login, inDate);
         delay = Math.max(0, loginMin - (shiftH * 60 + shiftM));
 
         if (dateStr === todayStr) {
-          hours = 0.0;
+          hours = isHalfDayReason ? 4.0 : 0.0;
         } else {
           hours = 4.0;
           status = 'Half Day';
@@ -425,8 +429,9 @@ function initAttendanceData() {
     const history = attendanceHistory[emp.id] || [];
     const presentDays = history.filter(r => ['Present', 'Work From Home', 'Holiday'].includes(r.status)).length;
     const halfDays = history.filter(r => r.status === 'Half Day').length;
-    const halfDayMultiplier = 1.0 - parseFloat(LEAVE_SETTINGS.halfDayRule);
-    const days = presentDays + halfDays * halfDayMultiplier;
+    const halfDayRuleVal = parseFloat(LEAVE_SETTINGS && LEAVE_SETTINGS.halfDayRule !== undefined ? LEAVE_SETTINGS.halfDayRule : 0.5);
+    const halfDayMultiplier = isNaN(halfDayRuleVal) ? 0.5 : (1.0 - halfDayRuleVal);
+    const days = presentDays + (halfDays * halfDayMultiplier);
     const hours = history.reduce((s, r) => s + (r.hours || 0), 0);
     monthData[emp.id] = { days, hours: Math.round(hours * 100) / 100 };
   });
@@ -649,8 +654,9 @@ function computeSalary(emp) {
   const history = attendanceHistory[emp.id] || [];
   const todayStr = getTodayDate();
   const absentDays = history.filter(r => r.status === 'Absent' && r.date !== todayStr).length;
-  const halfDays = history.filter(r => r.status === 'Half Day' && r.date !== todayStr).length;
-  const totalLeavesTaken = (emp.leavesTaken || 0) + absentDays + (halfDays * 0.5);
+  const halfDays = history.filter(r => r.status === 'Half Day').length;
+  const halfDayLeaveVal = parseFloat(LEAVE_SETTINGS && LEAVE_SETTINGS.halfDayRule !== undefined ? LEAVE_SETTINGS.halfDayRule : 0.5);
+  const totalLeavesTaken = (emp.leavesTaken || 0) + absentDays + (halfDays * halfDayLeaveVal);
   const paidAllowance = getPaidLeaveAllowance(emp);
   let unpaidLeaveDeduction = 0;
   let excessLeaves = 0;

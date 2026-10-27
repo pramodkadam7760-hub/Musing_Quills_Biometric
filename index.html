@@ -4715,7 +4715,15 @@
             }
             hours = Math.round(calculatedHours * 100) / 100;
 
-            if (logoutMin < halfDayCutoffMin || hours < halfDayThreshold) {
+            const isHalfDayReason = (checkInLog && (
+              (checkInLog.reason && /half[\s_-]?day/i.test(checkInLog.reason)) ||
+              (checkInLog.remarks && /half[\s_-]?day/i.test(checkInLog.remarks))
+            )) || (checkOutLog && (
+              (checkOutLog.reason && /half[\s_-]?day/i.test(checkOutLog.reason)) ||
+              (checkOutLog.remarks && /half[\s_-]?day/i.test(checkOutLog.remarks))
+            ));
+
+            if (isHalfDayReason || logoutMin < halfDayCutoffMin || hours < halfDayThreshold) {
               status = 'Half Day';
             }
 
@@ -4726,13 +4734,17 @@
               dailyOt = Math.round((hours - expectedWorkHours) * 100) / 100;
             }
           } else if (login) {
-            status = 'Present';
             const inDate = checkInLog && checkInLog.timestamp ? new Date(checkInLog.timestamp) : null;
+            const isHalfDayReason = (checkInLog && (
+              (checkInLog.reason && /half[\s_-]?day/i.test(checkInLog.reason)) ||
+              (checkInLog.remarks && /half[\s_-]?day/i.test(checkInLog.remarks))
+            ));
+            status = isHalfDayReason ? 'Half Day' : 'Present';
             const loginMin = parseTimeToMinutes(login, inDate);
             delay = Math.max(0, loginMin - (shiftH * 60 + shiftM));
 
             if (dateStr === todayStr) {
-              hours = 0.0;
+              hours = isHalfDayReason ? 4.0 : 0.0;
             } else {
               hours = 4.0;
               status = 'Half Day';
@@ -4780,8 +4792,9 @@
         });
         const presentDays = history.filter(r => ['Present', 'Work From Home', 'Holiday'].includes(r.status)).length;
         const halfDays = history.filter(r => r.status === 'Half Day').length;
-        const halfDayMultiplier = 1.0 - parseFloat(LEAVE_SETTINGS.halfDayRule);
-        const days = presentDays + halfDays * halfDayMultiplier;
+        const halfDayRuleVal = parseFloat(LEAVE_SETTINGS && LEAVE_SETTINGS.halfDayRule !== undefined ? LEAVE_SETTINGS.halfDayRule : 0.5);
+        const halfDayMultiplier = isNaN(halfDayRuleVal) ? 0.5 : (1.0 - halfDayRuleVal);
+        const days = presentDays + (halfDays * halfDayMultiplier);
         const hours = history.reduce((s, r) => s + (r.hours || 0), 0);
         const otHours = history.reduce((s, r) => s + (r.dailyOt || 0), 0);
         monthData[emp.id] = { days, hours: Math.round(hours * 100) / 100, otHours: Math.round(otHours * 100) / 100 };
@@ -5039,8 +5052,9 @@
       const history = attendanceHistory[emp.id] || [];
       const todayStr = getTodayDate();
       const absentDays = history.filter(r => r.status === 'Absent' && r.date !== todayStr).length;
-      const halfDays = history.filter(r => r.status === 'Half Day' && r.date !== todayStr).length;
-      const totalLeavesTaken = (emp.leavesTaken || 0) + absentDays + (halfDays * 0.5);
+      const halfDays = history.filter(r => r.status === 'Half Day').length;
+      const halfDayLeaveVal = parseFloat(LEAVE_SETTINGS.halfDayRule !== undefined ? LEAVE_SETTINGS.halfDayRule : 0.5);
+      const totalLeavesTaken = (emp.leavesTaken || 0) + absentDays + (halfDays * halfDayLeaveVal);
       const paidAllowance = getPaidLeaveAllowance(emp);
       let unpaidLeaveDeduction = 0;
       let excessLeaves = 0;
@@ -9916,6 +9930,8 @@
     // ===== 6. MONTHLY DASHBOARD =====
     function renderMonthlyDashboard() {
       const filteredEmps = getFilteredEmployees();
+      const halfDayRuleVal = parseFloat(LEAVE_SETTINGS && LEAVE_SETTINGS.halfDayRule !== undefined ? LEAVE_SETTINGS.halfDayRule : 0.5);
+      const halfDayMultiplier = isNaN(halfDayRuleVal) ? 0.5 : (1.0 - halfDayRuleVal);
       const dashData = filteredEmps.map(emp => {
         const history = getFilteredHistory(emp.id);
         const present = history.filter(r => r.status === 'Present' || r.status === 'Work From Home').length;
@@ -9924,7 +9940,8 @@
         const halfDay = history.filter(r => r.status === 'Half Day').length;
         const late = history.filter(r => r.delay > 0).length;
         const totalHours = history.reduce((s, r) => s + (r.hours || 0), 0);
-        const overtime = Math.max(0, totalHours - present * getExpectedHours(emp));
+        const expected = (present * getExpectedHours(emp)) + (halfDay * getExpectedHours(emp) * 0.5);
+        const overtime = Math.max(0, totalHours - expected);
         return { emp, present, absent, leave, halfDay, late, overtime: Math.round(overtime * 100) / 100, hasData: history.length > 0 };
       }).filter(d => d.hasData);
 
@@ -9932,7 +9949,7 @@
         return `<div class="empty-state"><i class="ti ti-calendar-off"></i><h4>No Data Available</h4><p>No attendance records found for the selected date range. Try adjusting your filters.</p></div> `;
       }
 
-      const totPresent = dashData.reduce((s, d) => s + d.present, 0);
+      const totPresent = dashData.reduce((s, d) => s + d.present + (d.halfDay * halfDayMultiplier), 0);
       const totAbsent = dashData.reduce((s, d) => s + d.absent, 0);
       const totLeave = dashData.reduce((s, d) => s + d.leave, 0);
       const totLate = dashData.reduce((s, d) => s + d.late, 0);
@@ -9974,11 +9991,15 @@
       const compData = filteredEmps.map(emp => {
         const history = getFilteredHistory(emp.id);
         const totalWorkDays = history.filter(r => !['Weekly Off', 'Holiday', '—'].includes(r.status)).length;
-        const presentDays = history.filter(r => ['Present', 'Work From Home', 'Half Day'].includes(r.status)).length;
+        const fullDays = history.filter(r => ['Present', 'Work From Home'].includes(r.status)).length;
+        const halfDays = history.filter(r => r.status === 'Half Day').length;
+        const halfDayRuleVal = parseFloat(LEAVE_SETTINGS && LEAVE_SETTINGS.halfDayRule !== undefined ? LEAVE_SETTINGS.halfDayRule : 0.5);
+        const halfDayMultiplier = isNaN(halfDayRuleVal) ? 0.5 : (1.0 - halfDayRuleVal);
+        const presentDays = fullDays + (halfDays * halfDayMultiplier);
         const attPct = totalWorkDays > 0 ? Math.round((presentDays / totalWorkDays) * 100) : 0;
         const lateCount = history.filter(r => r.delay > LATE_PENALTY.graceMinutes).length;
         const totalHours = history.reduce((s, r) => s + (r.hours || 0), 0);
-        const expectedHours = presentDays * getExpectedHours(emp);
+        const expectedHours = (fullDays * getExpectedHours(emp)) + (halfDays * getExpectedHours(emp) * 0.5);
         const shortHours = presentDays > 0 && totalHours < expectedHours * 0.9;
         return { emp, attPct, lateCount, presentDays, totalWorkDays, shortHours, totalHours: Math.round(totalHours) };
       });
@@ -10149,18 +10170,19 @@
         const absent = last7.filter(r => r.status === 'Absent').length;
         const leave = last7.filter(r => r.status === 'Leave').length;
         const halfDay = last7.filter(r => r.status === 'Half Day').length;
+        const halfDayMultiplier = 1.0 - parseFloat(LEAVE_SETTINGS.halfDayRule !== undefined ? LEAVE_SETTINGS.halfDayRule : 0.5);
         const late = last7.filter(r => r.delay > 0).length;
         const hrs = last7.reduce((s, r) => s + (r.hours || 0), 0);
-        const expected = last7.filter(r => ['Present', 'Work From Home', 'Half Day'].includes(r.status)).length * getExpectedHours(emp);
+        const expected = (present * getExpectedHours(emp)) + (halfDay * getExpectedHours(emp) * 0.5);
         const ot = Math.max(0, hrs - expected);
 
-        totalPresent += present;
+        totalPresent += present + (halfDay * halfDayMultiplier);
         totalAbsent += absent;
         totalOnLeave += leave;
         totalLate += late;
         totalOT += ot;
 
-        return { emp, present, absent, leave, halfDay, late, ot: Math.round(ot * 100) / 100 };
+        return { emp, present: present + (halfDay * halfDayMultiplier), absent, leave, halfDay, late, ot: Math.round(ot * 100) / 100 };
       });
 
       const attPct = totalEmp > 0 ? Math.round((totalPresent / (totalEmp * 5)) * 100) : 0; // assume 5 work days in week
@@ -10469,9 +10491,9 @@
                   <div class="form-group" style="flex: 1;">
                     <label class="form-label" style="font-size: 12px;">Half-Day Deduction Rule</label>
                     <select class="form-select" id="setting-half-day-rule" style="height: 38px;">
-                      <option value="0.5" ${LEAVE_SETTINGS.halfDayRule === '0.5' ? 'selected' : ''}>Counts as 0.5 Leave</option>
-                      <option value="0.0" ${LEAVE_SETTINGS.halfDayRule === '0.0' ? 'selected' : ''}>Fully Paid (0.0 Leave)</option>
-                      <option value="1.0" ${LEAVE_SETTINGS.halfDayRule === '1.0' ? 'selected' : ''}>Counts as Full Leave (1.0)</option>
+                      <option value="0.5" ${parseFloat(LEAVE_SETTINGS.halfDayRule) === 0.5 ? 'selected' : ''}>Counts as 0.5 Leave</option>
+                      <option value="0.0" ${parseFloat(LEAVE_SETTINGS.halfDayRule) === 0.0 ? 'selected' : ''}>Fully Paid (0.0 Leave)</option>
+                      <option value="1.0" ${parseFloat(LEAVE_SETTINGS.halfDayRule) === 1.0 ? 'selected' : ''}>Counts as Full Leave (1.0)</option>
                     </select>
                   </div>
                 </div>
@@ -10706,7 +10728,7 @@
       }
     }
 
-    function saveLeaveSettings(event) {
+    async function saveLeaveSettings(event) {
       event.preventDefault();
 
       const casualCount = parseFloat(document.getElementById('setting-casual-count').value) || 0;
@@ -10717,10 +10739,11 @@
       const carryForwardMax = parseFloat(document.getElementById('setting-carry-forward-max').value) || 0;
       const lopRule = document.getElementById('setting-lop-rule').value;
       const lopFixedAmount = parseFloat(document.getElementById('setting-lop-fixed-amount').value) || 0;
-      const halfDayRule = document.getElementById('setting-half-day-rule').value;
+      const halfDayRule = parseFloat(document.getElementById('setting-half-day-rule').value) || 0.5;
       const carryForward = document.getElementById('setting-carry-forward').checked;
 
       LEAVE_SETTINGS = {
+        ...LEAVE_SETTINGS,
         casualCount,
         sickCount,
         optionalCount,
@@ -10735,17 +10758,17 @@
 
       localStorage.setItem('LEAVE_SETTINGS', JSON.stringify(LEAVE_SETTINGS));
 
-      // Re-calculate attendance days for all employees since half-day rules might have changed
-      employees.forEach(emp => {
-        const history = attendanceHistory[emp.id] || [];
-        const presentDays = history.filter(r => ['Present', 'Work From Home', 'Holiday'].includes(r.status)).length;
-        const halfDays = history.filter(r => r.status === 'Half Day').length;
-        const halfDayMultiplier = 1.0 - parseFloat(LEAVE_SETTINGS.halfDayRule);
-        const days = presentDays + halfDays * halfDayMultiplier;
-        const hours = history.reduce((s, r) => s + (r.hours || 0), 0);
-        const otHours = history.reduce((s, r) => s + (r.dailyOt || 0), 0);
-        monthData[emp.id] = { days, hours: Math.round(hours * 100) / 100, otHours: Math.round(otHours * 100) / 100 };
-      });
+      // Persist to backend server so it survives page reloads
+      try {
+        await apiFetch(`${API_BASE_URL}/settings/leave`, {
+          method: 'POST',
+          body: LEAVE_SETTINGS
+        });
+      } catch (err) {
+        console.warn('Could not sync leave settings to backend:', err);
+      }
+
+      initAttendanceData();
 
       showToast('Leave settings saved successfully', 'success');
       logAuditAction('Update Leave Policy', 'Updated leave limits, carry-forward, and LOP rules');

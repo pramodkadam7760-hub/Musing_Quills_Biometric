@@ -139,9 +139,9 @@ function renderSettings(container) {
               <div class="form-group" style="flex: 1;">
                 <label class="form-label" style="font-size: 12px;">Half-Day Deduction Rule</label>
                 <select class="form-select" id="setting-half-day-rule" style="height: 38px;">
-                  <option value="0.5" ${LEAVE_SETTINGS.halfDayRule === '0.5' ? 'selected' : ''}>Counts as 0.5 Leave</option>
-                  <option value="0.0" ${LEAVE_SETTINGS.halfDayRule === '0.0' ? 'selected' : ''}>Fully Paid (0.0 Leave)</option>
-                  <option value="1.0" ${LEAVE_SETTINGS.halfDayRule === '1.0' ? 'selected' : ''}>Counts as Full Leave (1.0)</option>
+                  <option value="0.5" ${parseFloat(LEAVE_SETTINGS.halfDayRule) === 0.5 ? 'selected' : ''}>Counts as 0.5 Leave</option>
+                  <option value="0.0" ${parseFloat(LEAVE_SETTINGS.halfDayRule) === 0.0 ? 'selected' : ''}>Fully Paid (0.0 Leave)</option>
+                  <option value="1.0" ${parseFloat(LEAVE_SETTINGS.halfDayRule) === 1.0 ? 'selected' : ''}>Counts as Full Leave (1.0)</option>
                 </select>
               </div>
             </div>
@@ -388,7 +388,7 @@ function saveLeaveSettings(event) {
   const carryForwardMax = parseFloat(document.getElementById('setting-carry-forward-max').value) || 0;
   const lopRule = document.getElementById('setting-lop-rule').value;
   const lopFixedAmount = parseFloat(document.getElementById('setting-lop-fixed-amount').value) || 0;
-  const halfDayRule = document.getElementById('setting-half-day-rule').value;
+  const halfDayRule = parseFloat(document.getElementById('setting-half-day-rule').value) || 0.5;
   const carryForward = document.getElementById('setting-carry-forward').checked;
 
   LEAVE_SETTINGS = {
@@ -420,8 +420,9 @@ function saveLeaveSettings(event) {
     const history = attendanceHistory[emp.id] || [];
     const presentDays = history.filter(r => ['Present', 'Work From Home', 'Holiday'].includes(r.status)).length;
     const halfDays = history.filter(r => r.status === 'Half Day').length;
-    const halfDayMultiplier = 1.0 - parseFloat(LEAVE_SETTINGS.halfDayRule);
-    const days = presentDays + halfDays * halfDayMultiplier;
+    const halfDayRuleVal = parseFloat(LEAVE_SETTINGS && LEAVE_SETTINGS.halfDayRule !== undefined ? LEAVE_SETTINGS.halfDayRule : 0.5);
+    const halfDayMultiplier = isNaN(halfDayRuleVal) ? 0.5 : (1.0 - halfDayRuleVal);
+    const days = presentDays + (halfDays * halfDayMultiplier);
     const hours = history.reduce((s, r) => s + (r.hours || 0), 0);
     monthData[emp.id] = { days, hours: Math.round(hours * 100) / 100 };
   });

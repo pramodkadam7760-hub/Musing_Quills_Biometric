@@ -474,6 +474,8 @@ function renderWorkingHours() {
 // ===== 6. MONTHLY DASHBOARD =====
 function renderMonthlyDashboard() {
   const filteredEmps = getFilteredEmployees();
+  const halfDayRuleVal = parseFloat(LEAVE_SETTINGS && LEAVE_SETTINGS.halfDayRule !== undefined ? LEAVE_SETTINGS.halfDayRule : 0.5);
+  const halfDayMultiplier = isNaN(halfDayRuleVal) ? 0.5 : (1.0 - halfDayRuleVal);
   const dashData = filteredEmps.map(emp => {
     const history = getFilteredHistory(emp.id);
     const present = history.filter(r => r.status === 'Present' || r.status === 'Work From Home').length;
@@ -482,7 +484,8 @@ function renderMonthlyDashboard() {
     const halfDay = history.filter(r => r.status === 'Half Day').length;
     const late = history.filter(r => r.delay > 0).length;
     const totalHours = history.reduce((s, r) => s + (r.hours || 0), 0);
-    const overtime = Math.max(0, totalHours - present * getExpectedHours(emp));
+    const expected = (present * getExpectedHours(emp)) + (halfDay * getExpectedHours(emp) * 0.5);
+    const overtime = Math.max(0, totalHours - expected);
     return { emp, present, absent, leave, halfDay, late, overtime: Math.round(overtime * 100) / 100, hasData: history.length > 0 };
   }).filter(d => d.hasData);
 
@@ -490,7 +493,7 @@ function renderMonthlyDashboard() {
     return `<div class="empty-state"><i class="ti ti-calendar-off"></i><h4>No Data Available</h4><p>No attendance records found for the selected date range. Try adjusting your filters.</p></div>`;
   }
 
-  const totPresent = dashData.reduce((s, d) => s + d.present, 0);
+  const totPresent = dashData.reduce((s, d) => s + d.present + (d.halfDay * halfDayMultiplier), 0);
   const totAbsent = dashData.reduce((s, d) => s + d.absent, 0);
   const totLeave = dashData.reduce((s, d) => s + d.leave, 0);
   const totLate = dashData.reduce((s, d) => s + d.late, 0);
@@ -532,11 +535,15 @@ function renderComplianceReport() {
   const compData = filteredEmps.map(emp => {
     const history = getFilteredHistory(emp.id);
     const totalWorkDays = history.filter(r => !['Weekly Off', 'Holiday', '—'].includes(r.status)).length;
-    const presentDays = history.filter(r => ['Present', 'Work From Home', 'Half Day'].includes(r.status)).length;
+    const fullDays = history.filter(r => ['Present', 'Work From Home'].includes(r.status)).length;
+    const halfDays = history.filter(r => r.status === 'Half Day').length;
+    const halfDayRuleVal = parseFloat(LEAVE_SETTINGS && LEAVE_SETTINGS.halfDayRule !== undefined ? LEAVE_SETTINGS.halfDayRule : 0.5);
+    const halfDayMultiplier = isNaN(halfDayRuleVal) ? 0.5 : (1.0 - halfDayRuleVal);
+    const presentDays = fullDays + (halfDays * halfDayMultiplier);
     const attPct = totalWorkDays > 0 ? Math.round((presentDays / totalWorkDays) * 100) : 0;
     const lateCount = history.filter(r => r.delay > LATE_PENALTY.graceMinutes).length;
     const totalHours = history.reduce((s, r) => s + (r.hours || 0), 0);
-    const expectedHours = presentDays * getExpectedHours(emp);
+    const expectedHours = (fullDays * getExpectedHours(emp)) + (halfDays * getExpectedHours(emp) * 0.5);
     const shortHours = presentDays > 0 && totalHours < expectedHours * 0.9;
     return { emp, attPct, lateCount, presentDays, totalWorkDays, shortHours, totalHours: Math.round(totalHours) };
   });
@@ -705,18 +712,20 @@ function renderWeeklySummary() {
     const absent = last7.filter(r => r.status === 'Absent').length;
     const leave = last7.filter(r => r.status === 'Leave').length;
     const halfDay = last7.filter(r => r.status === 'Half Day').length;
+    const halfDayRuleVal = parseFloat(LEAVE_SETTINGS && LEAVE_SETTINGS.halfDayRule !== undefined ? LEAVE_SETTINGS.halfDayRule : 0.5);
+    const halfDayMultiplier = isNaN(halfDayRuleVal) ? 0.5 : (1.0 - halfDayRuleVal);
     const late = last7.filter(r => r.delay > 0).length;
     const hrs = last7.reduce((s, r) => s + (r.hours || 0), 0);
-    const expected = last7.filter(r => ['Present', 'Work From Home', 'Half Day'].includes(r.status)).length * getExpectedHours(emp);
+    const expected = (present * getExpectedHours(emp)) + (halfDay * getExpectedHours(emp) * 0.5);
     const ot = Math.max(0, hrs - expected);
 
-    totalPresent += present;
+    totalPresent += present + (halfDay * halfDayMultiplier);
     totalAbsent += absent;
     totalOnLeave += leave;
     totalLate += late;
     totalOT += ot;
 
-    return { emp, present, absent, leave, halfDay, late, ot: Math.round(ot * 100) / 100 };
+    return { emp, present: present + (halfDay * halfDayMultiplier), absent, leave, halfDay, late, ot: Math.round(ot * 100) / 100 };
   });
 
   const attPct = totalEmp > 0 ? Math.round((totalPresent / (totalEmp * 5)) * 100) : 0; // assume 5 work days in week

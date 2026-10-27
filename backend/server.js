@@ -2168,7 +2168,9 @@ app.get('/payslip/:id', async (req, res) => {
 
     const presentDays = attendanceHistory.filter(r => ['Present', 'Work From Home', 'Holiday'].includes(r.status)).length;
     const halfDays = attendanceHistory.filter(r => r.status === 'Half Day').length;
-    const days = presentDays + halfDays * 0.5;
+    const halfDayRuleVal = parseFloat(LEAVE_SETTINGS && LEAVE_SETTINGS.halfDayRule !== undefined ? LEAVE_SETTINGS.halfDayRule : 0.5);
+    const halfDayMultiplier = isNaN(halfDayRuleVal) ? 0.5 : (1.0 - halfDayRuleVal);
+    const days = presentDays + (halfDays * halfDayMultiplier);
 
     const hours = attendanceHistory.reduce((s, r) => s + (r.hours || 0), 0);
     const md = { days, hours };
@@ -2200,8 +2202,8 @@ app.get('/payslip/:id', async (req, res) => {
     } else {
       const WORK_DAYS = 26;
       const absentDays = attendanceHistory.filter(r => r.status === 'Absent' && r.date !== todayStr).length;
-      const halfDaysForLeaves = attendanceHistory.filter(r => r.status === 'Half Day' && r.date !== todayStr).length;
-      const totalLeavesTaken = (empFormatted.leavesTaken || 0) + absentDays + (halfDaysForLeaves * 0.5);
+      const halfDaysForLeaves = attendanceHistory.filter(r => r.status === 'Half Day').length;
+      const totalLeavesTaken = (empFormatted.leavesTaken || 0) + absentDays + (halfDaysForLeaves * halfDayRuleVal);
 
       const paidAllowance = parseFloat(LEAVE_SETTINGS.monthlyLimit || 1.5);
       const paidLeaves = Math.min(totalLeavesTaken, paidAllowance);
