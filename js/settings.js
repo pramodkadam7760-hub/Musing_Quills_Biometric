@@ -21,30 +21,10 @@ function renderSettings(container) {
         </div>
 
         <div class="settings-card-body">
-          <!-- Policy Summary -->
-          <div class="settings-policy-summary">
-            <div class="summary-item">
-              <span class="summary-label">Grace Minutes</span>
-              <span class="summary-value">${LATE_PENALTY.graceMinutes} min</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Warning Threshold</span>
-              <span class="summary-value">${LATE_PENALTY.warningThreshold} lates</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Penalty / Late Mark</span>
-              <span class="summary-value">₹${LATE_PENALTY.penaltyPerLate}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Max Deduction Pct</span>
-              <span class="summary-value">${LATE_PENALTY.maxPenaltyPct}% of basic</span>
-            </div>
-          </div>
-
           <!-- Toggle Option -->
-          <div class="settings-toggle-row">
+          <div class="settings-toggle-row" style="margin-bottom: 16px;">
             <div class="toggle-info">
-              <span class="toggle-label">Late Penalty Calculations</span>
+              <span class="toggle-label" style="font-weight: 600;">Late Penalty Calculations</span>
               <p class="toggle-desc text-muted" style="margin-top:4px;">Enable or disable late arrival monetary penalties in payroll and scanner alerts.</p>
             </div>
             <label class="switch">
@@ -54,7 +34,7 @@ function renderSettings(container) {
           </div>
 
           <!-- Alert Explainer -->
-          <div class="settings-explainer ${isEnabled ? 'enabled' : 'disabled'}" id="settings-explainer">
+          <div class="settings-explainer ${isEnabled ? 'enabled' : 'disabled'}" id="settings-explainer" style="margin-bottom: 16px;">
             <i class="ti ${isEnabled ? 'ti-circle-check' : 'ti-info-circle'}"></i>
             <div class="explainer-content">
               <strong>${isEnabled ? 'Policy Status: ACTIVE' : 'Policy Status: DEACTIVATED'}</strong>
@@ -65,6 +45,41 @@ function renderSettings(container) {
               </p>
             </div>
           </div>
+
+          <!-- Editable Policy Parameters Form -->
+          <form id="late-penalty-form" onsubmit="saveLatePenaltySettings(event)">
+            <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label" style="font-size: 12px;">Grace Minutes</label>
+                <input type="number" class="form-input" id="setting-late-grace" min="0" max="60" step="1" value="${LATE_PENALTY.graceMinutes}">
+                <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:2px;">No penalty within grace window</span>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label" style="font-size: 12px;">Warning Threshold (Lates)</label>
+                <input type="number" class="form-input" id="setting-late-threshold" min="1" max="10" step="1" value="${LATE_PENALTY.warningThreshold}">
+                <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:2px;">Penalty applies on/after this count</span>
+              </div>
+            </div>
+
+            <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 16px;">
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label" style="font-size: 12px;">Penalty / Late Mark (₹)</label>
+                <input type="number" class="form-input" id="setting-late-amount" min="0" step="50" value="${LATE_PENALTY.penaltyPerLate}">
+                <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:2px;">Deduction per late arrival</span>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label" style="font-size: 12px;">Max Deduction Pct (% of basic)</label>
+                <input type="number" class="form-input" id="setting-late-max-pct" min="1" max="100" step="1" value="${LATE_PENALTY.maxPenaltyPct}">
+                <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:2px;">Caps total penalty deduction</span>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end;">
+              <button type="submit" class="btn btn-primary btn-sm">
+                <i class="ti ti-device-floppy"></i> Save Late Penalty Rules
+              </button>
+            </div>
+          </form>
         </div>
       </div>
 
@@ -421,10 +436,20 @@ function saveLeaveSettings(event) {
   }
 }
 
-function handleLatePenaltyToggle(checked) {
+async function handleLatePenaltyToggle(checked) {
   LATE_PENALTY.enabled = checked;
   localStorage.setItem('LATE_PENALTY_enabled', checked ? 'true' : 'false');
   
+  try {
+    await fetch('/api/settings/leave', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ latePenalty: LATE_PENALTY })
+    });
+  } catch (err) {
+    console.warn('Could not sync late penalty to server:', err);
+  }
+
   if (checked) {
     showToast('Late penalty calculations enabled globally', 'success');
   } else {
@@ -452,6 +477,47 @@ function handleLatePenaltyToggle(checked) {
   }
 
   logAuditAction('Toggle Policy', `Set Late Penalty calculations to: ${checked ? 'Enabled' : 'Disabled'}`);
+}
+
+async function saveLatePenaltySettings(event) {
+  event.preventDefault();
+  const graceMinutes = parseInt(document.getElementById('setting-late-grace').value) || 10;
+  const warningThreshold = parseInt(document.getElementById('setting-late-threshold').value) || 3;
+  const penaltyPerLate = parseInt(document.getElementById('setting-late-amount').value) || 500;
+  const maxPenaltyPct = parseInt(document.getElementById('setting-late-max-pct').value) || 10;
+  const enabled = document.getElementById('toggle-late-penalty').checked;
+
+  LATE_PENALTY = {
+    enabled,
+    graceMinutes,
+    warningThreshold,
+    penaltyPerLate,
+    maxPenaltyPct
+  };
+
+  localStorage.setItem('LATE_PENALTY_enabled', enabled ? 'true' : 'false');
+  localStorage.setItem('LATE_PENALTY_graceMinutes', graceMinutes);
+  localStorage.setItem('LATE_PENALTY_warningThreshold', warningThreshold);
+  localStorage.setItem('LATE_PENALTY_penaltyPerLate', penaltyPerLate);
+  localStorage.setItem('LATE_PENALTY_maxPenaltyPct', maxPenaltyPct);
+
+  try {
+    await fetch('/api/settings/leave', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ latePenalty: LATE_PENALTY })
+    });
+  } catch (err) {
+    console.warn('Could not sync late penalty to server:', err);
+  }
+
+  showToast('Late penalty policy settings saved successfully', 'success');
+  logAuditAction('Update Late Penalty Policy', `Grace: ${graceMinutes}m, Threshold: ${warningThreshold}, Rate: ₹${penaltyPerLate}, Max: ${maxPenaltyPct}%`);
+
+  const container = document.getElementById('app');
+  if (container) {
+    renderSettings(container);
+  }
 }
 
 async function handleChangePassword(event) {

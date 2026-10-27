@@ -75,19 +75,22 @@ function renderSalary(container) {
     </div>
 
     <!-- Late Penalty Policy Info -->
-    ${(!LATE_PENALTY.enabled || totalLatePenalties > 0) ? `
-    <div class="salary-structure-info">
-      <div class="salary-structure-header">
-        <i class="ti ti-alert-triangle" style="color:var(--warning);margin-right:6px"></i>
-        <strong>Late Penalty Policy:</strong>
+    <div class="salary-structure-info" style="margin-bottom: 24px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+      <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <i class="ti ti-alarm" style="color:${LATE_PENALTY.enabled ? 'var(--warning)' : 'var(--text-muted)'}; font-size: 18px;"></i>
+        <strong style="color: var(--text);">Late Penalty Policy:</strong>
         ${LATE_PENALTY.enabled ? `
-          <span class="text-muted" style="margin-left:6px">${LATE_PENALTY.graceMinutes} min grace • ${LATE_PENALTY.warningThreshold}+ lates = ₹${LATE_PENALTY.penaltyPerLate}/late • Max ${LATE_PENALTY.maxPenaltyPct}% of basic pay</span>
+          <span class="chip success" style="padding: 2px 8px; font-size: 11px; font-weight: 700;">ACTIVE</span>
+          <span class="text-muted" style="font-size: 12px;">${LATE_PENALTY.graceMinutes} min grace • ${LATE_PENALTY.warningThreshold}+ lates = ₹${LATE_PENALTY.penaltyPerLate}/late • Max ${LATE_PENALTY.maxPenaltyPct}% deduction</span>
         ` : `
-          <span class="text-danger" style="margin-left:6px; font-weight: bold;">Disabled by Admin Settings</span>
+          <span class="chip danger" style="padding: 2px 8px; font-size: 11px; font-weight: 700;">DISABLED</span>
+          <span class="text-muted" style="font-size: 12px;">Late penalty calculations are currently bypassed by Admin</span>
         `}
       </div>
+      <button class="btn btn-ghost btn-sm" style="font-size: 11px; padding: 4px 10px;" onclick="navigateTo('settings')">
+        <i class="ti ti-settings"></i> Configure Policy
+      </button>
     </div>
-    ` : ''}
 
     <!-- Salary Cards Grid -->
     <div class="salary-grid">

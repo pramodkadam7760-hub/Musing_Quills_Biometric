@@ -19,7 +19,14 @@ let LEAVE_SETTINGS = {
   halfDayRule: 0.5,
   monthlyLimit: 1.5,
   carryForward: false,
-  carryForwardMax: 5
+  carryForwardMax: 5,
+  latePenalty: {
+    enabled: true,
+    graceMinutes: 10,
+    warningThreshold: 3,
+    penaltyPerLate: 500,
+    maxPenaltyPct: 10
+  }
 };
 
 try {

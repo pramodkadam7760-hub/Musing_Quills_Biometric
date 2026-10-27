@@ -949,14 +949,29 @@ function markAllRead() {
   }
 }
 
+function clearAllNotifications() {
+  notifications = [];
+  try {
+    localStorage.setItem('NOTIFICATIONS', JSON.stringify([]));
+  } catch (e) { console.warn('Failed to save notifications', e); }
+  updateNotificationBadge();
+  const dropdown = document.getElementById('notif-dropdown');
+  if (dropdown && dropdown.classList.contains('open')) {
+    dropdown.innerHTML = renderNotificationDropdown();
+  }
+  showToast('All notifications cleared', 'info');
+}
+
 function renderNotificationDropdown() {
   const typeIcons = { late: 'ti-alarm', habitual: 'ti-alert-octagon', info: 'ti-info-circle', success: 'ti-circle-check' };
   const typeColors = { late: 'var(--warning)', habitual: 'var(--danger)', info: 'var(--info)', success: 'var(--success)' };
 
   if (!notifications || notifications.length === 0) {
     return `
-      <div class="notif-header"><span>Notifications</span></div>
-      <div class="notif-empty"><i class="ti ti-bell-off"></i><p>No notifications</p></div>
+      <div class="notif-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);">
+        <span style="font-weight:600;">Notifications</span>
+      </div>
+      <div class="notif-empty" style="text-align:center;padding:32px 16px;color:var(--text-muted);"><i class="ti ti-bell-off" style="font-size:24px;display:block;margin-bottom:6px;"></i><p style="margin:0;font-size:13px;">No notifications</p></div>
     `;
   }
 
@@ -964,7 +979,10 @@ function renderNotificationDropdown() {
   return `
     <div class="notif-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);">
       <span style="font-weight:600;">Notifications ${unreadCount > 0 ? `<span class="notif-unread-count" style="background:var(--danger);color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;margin-left:6px;">${unreadCount} new</span>` : ''}</span>
-      ${unreadCount > 0 ? `<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 8px;" onclick="markAllRead()">Mark all read</button>` : ''}
+      <div style="display:flex;gap:6px;align-items:center;">
+        ${unreadCount > 0 ? `<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 8px;" onclick="markAllRead()">Mark read</button>` : ''}
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 8px;color:var(--danger);" onclick="clearAllNotifications()"><i class="ti ti-trash" style="margin-right:2px;"></i>Clear all</button>
+      </div>
     </div>
     <div class="notif-list" style="max-height:360px;overflow-y:auto;">
       ${notifications.slice(0, 25).map(n => `
