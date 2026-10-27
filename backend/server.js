@@ -856,8 +856,9 @@ app.post('/api/employee/attendance', requireEmployee, async (req, res) => {
       const now = new Date();
       const checkInMin = now.getHours() * 60 + now.getMinutes();
       const shiftStartMin = shiftH * 60 + shiftM;
-      delayMinutes = checkInMin - shiftStartMin;
-      if (delayMinutes > 15) {
+      delayMinutes = Math.max(0, checkInMin - shiftStartMin);
+      const grace = (LEAVE_SETTINGS.latePenalty && LEAVE_SETTINGS.latePenalty.graceMinutes !== undefined) ? LEAVE_SETTINGS.latePenalty.graceMinutes : 15;
+      if (delayMinutes > grace) {
         isLate = true;
       }
     }
@@ -1485,8 +1486,9 @@ app.post('/api/hardware/log', async (req, res) => {
         const now = new Date();
         const checkInMin = now.getHours() * 60 + now.getMinutes();
         const shiftStartMin = shiftH * 60 + shiftM;
-        delayMinutes = checkInMin - shiftStartMin;
-        if (action.toUpperCase() === 'IN' && delayMinutes > 15) {
+        delayMinutes = Math.max(0, checkInMin - shiftStartMin);
+        const grace = (LEAVE_SETTINGS.latePenalty && LEAVE_SETTINGS.latePenalty.graceMinutes !== undefined) ? LEAVE_SETTINGS.latePenalty.graceMinutes : 15;
+        if (action.toUpperCase() === 'IN' && delayMinutes > grace) {
           isLate = true;
         }
       } else if (employee_name) {
@@ -1512,8 +1514,9 @@ app.post('/api/hardware/log', async (req, res) => {
           const now = new Date();
           const checkInMin = now.getHours() * 60 + now.getMinutes();
           const shiftStartMin = shiftH * 60 + shiftM;
-          delayMinutes = checkInMin - shiftStartMin;
-          if (action.toUpperCase() === 'IN' && delayMinutes > 15) {
+          delayMinutes = Math.max(0, checkInMin - shiftStartMin);
+          const grace = (LEAVE_SETTINGS.latePenalty && LEAVE_SETTINGS.latePenalty.graceMinutes !== undefined) ? LEAVE_SETTINGS.latePenalty.graceMinutes : 15;
+          if (action.toUpperCase() === 'IN' && delayMinutes > grace) {
             isLate = true;
           }
         } else {
@@ -1609,8 +1612,9 @@ app.post('/api/hardware/log', async (req, res) => {
       const now = new Date();
       const checkInMin = now.getHours() * 60 + now.getMinutes();
       const shiftStartMin = shiftH * 60 + shiftM;
-      delayMinutes = checkInMin - shiftStartMin;
-      if (delayMinutes > 15) {
+      delayMinutes = Math.max(0, checkInMin - shiftStartMin);
+      const grace = (LEAVE_SETTINGS.latePenalty && LEAVE_SETTINGS.latePenalty.graceMinutes !== undefined) ? LEAVE_SETTINGS.latePenalty.graceMinutes : 15;
+      if (delayMinutes > grace) {
         isLate = true;
       }
     }
@@ -2210,26 +2214,34 @@ app.get('/payslip/:id', async (req, res) => {
         basicPay = Math.round(md.hours * empFormatted.hourlyRate);
       }
 
+      const latePenaltyPolicy = LEAVE_SETTINGS.latePenalty || {
+        enabled: true,
+        graceMinutes: 15,
+        warningThreshold: 3,
+        penaltyPerLate: 100,
+        maxPenaltyPct: 20
+      };
       let lateCount = 0;
       datesList.forEach(({ dateStr }) => {
         const dayLogs = grouped[dateStr];
         if (dayLogs) {
           const checkIn = dayLogs.find(l => l.action === 'IN');
           if (checkIn && checkIn.device !== 'WFH_DASHBOARD') {
-            const [linH, linM] = checkIn.timeStr.split(':').map(Number);
+            const inDate = new Date(checkIn.timestamp);
+            const loginMin = inDate.getHours() * 60 + inDate.getMinutes();
             const [sH, sM] = empFormatted.shiftStart.split(':').map(Number);
-            const loginMin = linH * 60 + linM;
             const shiftMin = sH * 60 + sM;
-            if (loginMin > shiftMin + 15) {
+            const grace = (latePenaltyPolicy.graceMinutes !== undefined) ? latePenaltyPolicy.graceMinutes : 15;
+            if (loginMin > shiftMin + grace) {
               lateCount++;
             }
           }
         }
       });
 
-      const penaltyPerLate = 100;
-      const habitualThreshold = 3;
-      const latePenalty = lateCount >= habitualThreshold ? (lateCount * penaltyPerLate) : 0;
+      const penaltyPerLate = latePenaltyPolicy.penaltyPerLate || 100;
+      const habitualThreshold = latePenaltyPolicy.warningThreshold || 3;
+      const latePenalty = (latePenaltyPolicy.enabled !== false && lateCount >= habitualThreshold) ? (lateCount * penaltyPerLate) : 0;
       totalDeductions = latePenalty;
       totalEarnings = basicPay;
       netPay = Math.max(0, basicPay - totalDeductions);

@@ -166,6 +166,24 @@ let LATE_PENALTY = {
   maxPenaltyPct: 10        // Max 10% of gross can be deducted as late penalty
 };
 
+function parseTimeToMinutes(val, dt) {
+  if (dt instanceof Date && !isNaN(dt.getTime())) {
+    return dt.getHours() * 60 + dt.getMinutes();
+  }
+  if (typeof val === 'string') {
+    const m = val.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+    if (m) {
+      let h = parseInt(m[1], 10);
+      const min = parseInt(m[2], 10);
+      const meridiem = m[3] ? m[3].toUpperCase() : null;
+      if (meridiem === 'PM' && h < 12) h += 12;
+      if (meridiem === 'AM' && h === 12) h = 0;
+      return h * 60 + min;
+    }
+  }
+  return 0;
+}
+
 // ---- Attendance History Compiler from Database Events ----
 function compileAttendanceData(logs) {
   attendanceHistory = {};
@@ -329,10 +347,10 @@ function compileAttendanceData(logs) {
         earlyExit = 0;
       } else if (login && logout) {
         status = 'Present';
-        const [linH, linM] = login.split(':').map(Number);
-        const [loutH, loutM] = logout.split(':').map(Number);
-        const loginMin = linH * 60 + linM;
-        const logoutMin = loutH * 60 + loutM;
+        const inDate = checkInLog && checkInLog.timestamp ? new Date(checkInLog.timestamp) : null;
+        const outDate = checkOutLog && checkOutLog.timestamp ? new Date(checkOutLog.timestamp) : null;
+        const loginMin = parseTimeToMinutes(login, inDate);
+        const logoutMin = parseTimeToMinutes(logout, outDate);
 
         delay = Math.max(0, loginMin - (shiftH * 60 + shiftM));
         if (isSaturday) {
@@ -341,7 +359,17 @@ function compileAttendanceData(logs) {
         } else {
           earlyExit = Math.max(0, (endH * 60 + endM) - logoutMin);
         }
-        hours = Math.round(((logoutMin - loginMin) / 60) * 100) / 100;
+
+        let calculatedHours = 0;
+        if (inDate && outDate && !isNaN(inDate.getTime()) && !isNaN(outDate.getTime()) && outDate >= inDate) {
+          calculatedHours = (outDate - inDate) / 3600000;
+        } else {
+          calculatedHours = Math.max(0, (logoutMin - loginMin) / 60);
+        }
+        if (PAYROLL_SETTINGS.lunchBreakDeduction && calculatedHours > 5.0) {
+          calculatedHours = Math.max(5.0, calculatedHours - 1.0);
+        }
+        hours = Math.round(calculatedHours * 100) / 100;
 
         const isHalfDay = isSaturday
           ? hours < halfDayThreshold
@@ -351,8 +379,9 @@ function compileAttendanceData(logs) {
         }
       } else if (login) {
         status = 'Present';
-        const [linH, linM] = login.split(':').map(Number);
-        delay = Math.max(0, (linH * 60 + linM) - (shiftH * 60 + shiftM));
+        const inDate = checkInLog && checkInLog.timestamp ? new Date(checkInLog.timestamp) : null;
+        const loginMin = parseTimeToMinutes(login, inDate);
+        delay = Math.max(0, loginMin - (shiftH * 60 + shiftM));
 
         if (dateStr === todayStr) {
           hours = 0.0;
@@ -512,7 +541,11 @@ function formatTimeShort(date) {
 
 function format24to12(timeStr) {
   if (!timeStr) return '—';
-  const [h, m] = timeStr.split(':').map(Number);
+  if (/AM|PM/i.test(timeStr)) return timeStr.trim();
+  const parts = String(timeStr).split(':');
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (isNaN(h) || isNaN(m)) return timeStr;
   const ampm = h >= 12 ? 'PM' : 'AM';
   const h12 = h % 12 || 12;
   return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;

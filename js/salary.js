@@ -87,9 +87,6 @@ function renderSalary(container) {
           <span class="text-muted" style="font-size: 12px;">Late penalty calculations are currently bypassed by Admin</span>
         `}
       </div>
-      <button class="btn btn-ghost btn-sm" style="font-size: 11px; padding: 4px 10px;" onclick="navigateTo('settings')">
-        <i class="ti ti-settings"></i> Configure Policy
-      </button>
     </div>
 
     <!-- Salary Cards Grid -->
