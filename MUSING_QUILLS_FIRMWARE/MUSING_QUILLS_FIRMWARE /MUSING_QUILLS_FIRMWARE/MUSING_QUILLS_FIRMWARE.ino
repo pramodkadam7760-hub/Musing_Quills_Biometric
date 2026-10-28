@@ -39,6 +39,7 @@ String serverUrl = "https://attendancemq.quantumclk.tech";
 // ═══════════════════════════════════════════════════════════
 #define SAMPLE_RATE 16000
 #define SAMPLE_DELAY_US (1000000 / SAMPLE_RATE)
+#define DEFAULT_VOLUME 50 // Volume percentage (0-100): 50 is gentle and clear
 #define FP_SCAN_TIMEOUT 12000UL
 #define RESULT_DWELL 2800UL
 #define DEBOUNCE_MS 260UL
@@ -269,11 +270,11 @@ bool playWav(const char *filename) {
 
   enableAudioOutput();
 
-  uint8_t playbackVolume = 85;
+  uint8_t playbackVolume = DEFAULT_VOLUME;
   if (strcmp(filename, WAV_INVALID) == 0)
-    playbackVolume = 75;
+    playbackVolume = (DEFAULT_VOLUME > 10) ? (DEFAULT_VOLUME - 10) : DEFAULT_VOLUME;
   else if (strcmp(filename, WAV_ENROLL_SUCCESS) == 0 || strcmp(filename, WAV_ENROLL_FAILED) == 0)
-    playbackVolume = 75;
+    playbackVolume = (DEFAULT_VOLUME > 10) ? (DEFAULT_VOLUME - 10) : DEFAULT_VOLUME;
 
   const uint32_t basePeriodUs = 1000000UL / sampleRate;
   const uint32_t periodRemainder = 1000000UL % sampleRate;
@@ -340,13 +341,13 @@ void playBeep(int freq, int duration_ms) {
   long delay_us = 1000000L / (freq * 2);
   long num_cycles = (duration_ms * 1000L) / (delay_us * 2);
   for (long i = 0; i < num_cycles; i++) {
-    dacWrite(AUDIO_PIN, 200);
+    dacWrite(AUDIO_PIN, 160);
     delayMicroseconds(delay_us);
-    dacWrite(AUDIO_PIN, 50);
+    dacWrite(AUDIO_PIN, 96);
     delayMicroseconds(delay_us);
   }
   // Smooth ramp-down to 0 to eliminate audio clicking noise
-  for (int v = 50; v >= 0; v--) {
+  for (int v = 96; v >= 0; v--) {
     dacWrite(AUDIO_PIN, v);
     delayMicroseconds(20);
   }
