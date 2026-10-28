@@ -280,11 +280,11 @@ bool playWav(const char *filename) {
 
   enableAudioOutput();
 
-  uint8_t playbackVolume = 30;
+  uint8_t playbackVolume = 85;
   if (strcmp(filename, WAV_INVALID) == 0)
-    playbackVolume = 30;
+    playbackVolume = 75;
   else if (strcmp(filename, WAV_ENROLL_SUCCESS) == 0 || strcmp(filename, WAV_ENROLL_FAILED) == 0)
-    playbackVolume = 25;
+    playbackVolume = 75;
 
   const uint32_t basePeriodUs = 1000000UL / sampleRate;
   const uint32_t periodRemainder = 1000000UL % sampleRate;
@@ -354,8 +354,23 @@ void playBeep(int freq, int duration_ms) {
   pinMode(AUDIO_PIN, INPUT);
 }
 
-void sfxCheckin() { playWav(WAV_CHECKED_IN); }
-void sfxCheckout() { playWav(WAV_CHECKED_OUT); }
+void sfxCheckin() {
+  if (!playWav(WAV_CHECKED_IN)) {
+    Serial.println("[AUDIO] WAV_CHECKED_IN not found, playing fallback chime");
+    playBeep(1800, 70);
+    delay(40);
+    playBeep(2400, 90);
+  }
+}
+
+void sfxCheckout() {
+  if (!playWav(WAV_CHECKED_OUT)) {
+    Serial.println("[AUDIO] WAV_CHECKED_OUT not found, playing fallback chime");
+    playBeep(2400, 70);
+    delay(40);
+    playBeep(1800, 90);
+  }
+}
 void sfxValid() {
   playBeep(2000, 50);
   delay(30);
@@ -2420,6 +2435,18 @@ void setup() {
     Serial.println("[FS] LittleFS Mount Failed");
   } else {
     Serial.println("[FS] LittleFS Mounted Successfully");
+    File root = LittleFS.open("/");
+    File file = root.openNextFile();
+    int fileCount = 0;
+    Serial.println("[FS] Listing audio files on LittleFS:");
+    while (file) {
+      Serial.printf("  -> %s (%d bytes)\n", file.name(), file.size());
+      fileCount++;
+      file = root.openNextFile();
+    }
+    if (fileCount == 0) {
+      Serial.println("  [!] WARNING: No files found on LittleFS! Please upload the 'data' folder using LittleFS upload tool.");
+    }
   }
   tft.init();
   tft.setRotation(1);
