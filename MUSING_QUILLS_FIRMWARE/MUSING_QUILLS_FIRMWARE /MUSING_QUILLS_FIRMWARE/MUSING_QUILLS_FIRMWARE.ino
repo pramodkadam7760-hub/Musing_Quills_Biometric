@@ -261,20 +261,9 @@ bool playWav(const char *filename) {
   }
 
   if (!formatFound || !dataFound || audioFormat != 1 || channels != 1 || bitsPerSample != 8) {
+    Serial.printf("[AUDIO] Format mismatch in %s: fmt=%d (need 1), ch=%d (need 1), bits=%d (need 8)\n",
+                  filename, audioFormat, channels, bitsPerSample);
     wavFile.close();
-    return false;
-  }
-
-  uint8_t *audioBuffer = (uint8_t *)malloc(dataSize);
-  if (!audioBuffer) {
-    wavFile.close();
-    return false;
-  }
-
-  size_t bytesLoaded = wavFile.read(audioBuffer, dataSize);
-  wavFile.close();
-  if (bytesLoaded != dataSize) {
-    free(audioBuffer);
     return false;
   }
 
@@ -292,34 +281,44 @@ bool playWav(const char *filename) {
   int64_t nextSampleTime = esp_timer_get_time() + basePeriodUs;
   uint8_t lastOutputSample = DAC_SILENCE;
 
-  for (uint32_t i = 0; i < dataSize; i++) {
-    int16_t amplitude = (int16_t)audioBuffer[i] - DAC_SILENCE;
-    amplitude = (amplitude * playbackVolume) / 100;
-    int16_t outputSample = DAC_SILENCE + amplitude;
-    outputSample = constrain(outputSample, 0, 255);
+  // Stream in small 512-byte chunks directly from LittleFS to avoid large heap malloc failure
+  uint8_t chunk[512];
+  uint32_t bytesRemaining = dataSize;
+  while (bytesRemaining > 0 && wavFile.available()) {
+    size_t toRead = (bytesRemaining > sizeof(chunk)) ? sizeof(chunk) : bytesRemaining;
+    size_t bytesRead = wavFile.read(chunk, toRead);
+    if (bytesRead == 0) break;
+    bytesRemaining -= bytesRead;
 
-    int64_t now = esp_timer_get_time();
-    if (now - nextSampleTime > (int64_t)(basePeriodUs * 2U + 2U)) {
-      nextSampleTime = now;
-      remainderAccumulator = 0;
-    }
+    for (size_t i = 0; i < bytesRead; i++) {
+      int16_t amplitude = (int16_t)chunk[i] - DAC_SILENCE;
+      amplitude = (amplitude * playbackVolume) / 100;
+      int16_t outputSample = DAC_SILENCE + amplitude;
+      outputSample = constrain(outputSample, 0, 255);
 
-    while (esp_timer_get_time() < nextSampleTime) {
-      // wait for next sample interval
-    }
+      int64_t now = esp_timer_get_time();
+      if (now - nextSampleTime > (int64_t)(basePeriodUs * 2U + 2U)) {
+        nextSampleTime = now;
+        remainderAccumulator = 0;
+      }
 
-    dacWrite(AUDIO_PIN, (uint8_t)outputSample);
-    lastOutputSample = (uint8_t)outputSample;
+      while (esp_timer_get_time() < nextSampleTime) {
+        // wait for next sample interval
+      }
 
-    nextSampleTime += basePeriodUs;
-    remainderAccumulator += periodRemainder;
-    if (remainderAccumulator >= sampleRate) {
-      nextSampleTime++;
-      remainderAccumulator -= sampleRate;
+      dacWrite(AUDIO_PIN, (uint8_t)outputSample);
+      lastOutputSample = (uint8_t)outputSample;
+
+      nextSampleTime += basePeriodUs;
+      remainderAccumulator += periodRemainder;
+      if (remainderAccumulator >= sampleRate) {
+        nextSampleTime++;
+        remainderAccumulator -= sampleRate;
+      }
     }
   }
 
-  free(audioBuffer);
+  wavFile.close();
 
   int16_t currentSample = lastOutputSample;
   while (currentSample != DAC_SILENCE) {
