@@ -39,7 +39,7 @@ String serverUrl = "https://attendancemq.quantumclk.tech";
 // ═══════════════════════════════════════════════════════════
 #define SAMPLE_RATE 16000
 #define SAMPLE_DELAY_US (1000000 / SAMPLE_RATE)
-#define DEFAULT_VOLUME 4 // Personal proximity volume: audible only to the person standing at the scanner (~4% scale)
+#define DEFAULT_VOLUME 6 // Personal proximity volume with Delta-Sigma error diffusion
 #define FP_SCAN_TIMEOUT 12000UL
 #define RESULT_DWELL 2800UL
 #define DEBOUNCE_MS 260UL
@@ -295,10 +295,16 @@ bool playWav(const char *filename) {
   // Start timer right before playback loop for exact sample timing
   int64_t nextSampleTime = esp_timer_get_time() + basePeriodUs;
 
+  int32_t errorAccumulator = 0;
   for (size_t i = 0; i < bytesRead; i++) {
-    int16_t amplitude = (int16_t)s_audioBuffer[i] - DAC_SILENCE;
-    amplitude = (amplitude * (int16_t)playbackVolume) / 100;
-    int16_t outputSample = DAC_SILENCE + amplitude;
+    // 1st-order Delta-Sigma noise shaping & error diffusion:
+    // Preserves fractional vocal energy across samples instead of truncating quiet sounds to dead zero
+    int32_t rawAmp = ((int32_t)s_audioBuffer[i] - DAC_SILENCE) * (int32_t)playbackVolume;
+    int32_t valWithErr = rawAmp + errorAccumulator;
+    int32_t outAmp = (valWithErr >= 0) ? ((valWithErr + 50) / 100) : ((valWithErr - 50) / 100);
+    errorAccumulator = valWithErr - (outAmp * 100);
+
+    int16_t outputSample = DAC_SILENCE + outAmp;
     if (outputSample < 0) outputSample = 0;
     if (outputSample > 255) outputSample = 255;
 
