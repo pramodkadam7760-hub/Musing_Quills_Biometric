@@ -303,11 +303,20 @@ bool playWav(const char *filename) {
   uint8_t lastOutputSample = DAC_SILENCE;
 
   for (size_t i = 0; i < bytesRead; i++) {
-    int32_t currAmp = (int32_t)((int16_t)s_audioBuffer[i] - DAC_SILENCE) * (int32_t)playbackVolume;
-    int32_t nextAmp = (i + 1 < bytesRead)
-      ? (int32_t)((int16_t)s_audioBuffer[i + 1] - DAC_SILENCE) * (int32_t)playbackVolume
-      : currAmp;
+    int16_t diffCurr = (int16_t)s_audioBuffer[i] - DAC_SILENCE;
+    int16_t diffNext = (i + 1 < bytesRead) ? ((int16_t)s_audioBuffer[i + 1] - DAC_SILENCE) : diffCurr;
 
+    // Studio Noise Gate: completely squelches ambient mic noise and idle hiss during word pauses
+    if (abs(diffCurr) <= 3 && abs(diffNext) <= 3) {
+      dacWrite(AUDIO_PIN, DAC_SILENCE);
+      delayMicroseconds(subStepUs * 4);
+      errAcc = 0;
+      lastOutputSample = DAC_SILENCE;
+      continue;
+    }
+
+    int32_t currAmp = (int32_t)diffCurr * (int32_t)playbackVolume;
+    int32_t nextAmp = (int32_t)diffNext * (int32_t)playbackVolume;
     int32_t delta = nextAmp - currAmp;
 
     // 4 sub-steps per audio frame: fine-grained linear interpolation with noise shaping
@@ -318,9 +327,14 @@ bool playWav(const char *filename) {
       int16_t dacLevel = (valWithErr >= 0) ? ((valWithErr + 50) / 100) : ((valWithErr - 50) / 100);
       errAcc = valWithErr - (dacLevel * 100);
 
+      // Leaky damping for low-level phonemes to cleanly prevent limit-cycle hiss
+      if (abs(targetVal) < 30) {
+        errAcc = (errAcc * 3) / 4;
+      }
+
       // Keep error accumulator tightly bounded
-      if (errAcc > 100) errAcc = 100;
-      else if (errAcc < -100) errAcc = -100;
+      if (errAcc > 80) errAcc = 80;
+      else if (errAcc < -80) errAcc = -80;
 
       uint8_t outByte = (uint8_t)constrain(DAC_SILENCE + dacLevel, 0, 255);
       dacWrite(AUDIO_PIN, outByte);
