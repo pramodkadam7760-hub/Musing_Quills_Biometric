@@ -39,7 +39,7 @@ String serverUrl = "https://attendancemq.quantumclk.tech";
 // ═══════════════════════════════════════════════════════════
 #define SAMPLE_RATE 16000
 #define SAMPLE_DELAY_US (1000000 / SAMPLE_RATE)
-#define DEFAULT_VOLUME 50 // Volume percentage (0-100): 50 is gentle and clear
+#define DEFAULT_VOLUME 100 // Pre-attenuated WAV files: 100% gives pristine dynamic range at gentle volume
 #define FP_SCAN_TIMEOUT 12000UL
 #define RESULT_DWELL 2800UL
 #define DEBOUNCE_MS 260UL
@@ -282,17 +282,14 @@ bool playWav(const char *filename) {
   int64_t nextSampleTime = esp_timer_get_time() + basePeriodUs;
   uint8_t lastOutputSample = DAC_SILENCE;
 
-  // Stream in small 512-byte chunks directly from LittleFS to avoid large heap malloc failure
-  uint8_t chunk[512];
-  uint32_t bytesRemaining = dataSize;
-  while (bytesRemaining > 0 && wavFile.available()) {
-    size_t toRead = (bytesRemaining > sizeof(chunk)) ? sizeof(chunk) : bytesRemaining;
-    size_t bytesRead = wavFile.read(chunk, toRead);
-    if (bytesRead == 0) break;
-    bytesRemaining -= bytesRead;
+  uint8_t *audioBuffer = (uint8_t *)malloc(dataSize);
+  if (audioBuffer) {
+    // In-memory playback: 0 SPI delay, pristine crystal clear audio with no robotic buzz!
+    wavFile.read(audioBuffer, dataSize);
+    wavFile.close();
 
-    for (size_t i = 0; i < bytesRead; i++) {
-      int16_t amplitude = (int16_t)chunk[i] - DAC_SILENCE;
+    for (uint32_t i = 0; i < dataSize; i++) {
+      int16_t amplitude = (int16_t)audioBuffer[i] - DAC_SILENCE;
       amplitude = (amplitude * playbackVolume) / 100;
       int16_t outputSample = DAC_SILENCE + amplitude;
       outputSample = constrain(outputSample, 0, 255);
@@ -317,9 +314,46 @@ bool playWav(const char *filename) {
         remainderAccumulator -= sampleRate;
       }
     }
-  }
+    free(audioBuffer);
+  } else {
+    // Streaming fallback if RAM is constrained
+    uint8_t chunk[512];
+    uint32_t bytesRemaining = dataSize;
+    while (bytesRemaining > 0 && wavFile.available()) {
+      size_t toRead = (bytesRemaining > sizeof(chunk)) ? sizeof(chunk) : bytesRemaining;
+      size_t bytesRead = wavFile.read(chunk, toRead);
+      if (bytesRead == 0) break;
+      bytesRemaining -= bytesRead;
 
-  wavFile.close();
+      for (size_t i = 0; i < bytesRead; i++) {
+        int16_t amplitude = (int16_t)chunk[i] - DAC_SILENCE;
+        amplitude = (amplitude * playbackVolume) / 100;
+        int16_t outputSample = DAC_SILENCE + amplitude;
+        outputSample = constrain(outputSample, 0, 255);
+
+        int64_t now = esp_timer_get_time();
+        if (now - nextSampleTime > (int64_t)(basePeriodUs * 2U + 2U)) {
+          nextSampleTime = now;
+          remainderAccumulator = 0;
+        }
+
+        while (esp_timer_get_time() < nextSampleTime) {
+          // wait for next sample interval
+        }
+
+        dacWrite(AUDIO_PIN, (uint8_t)outputSample);
+        lastOutputSample = (uint8_t)outputSample;
+
+        nextSampleTime += basePeriodUs;
+        remainderAccumulator += periodRemainder;
+        if (remainderAccumulator >= sampleRate) {
+          nextSampleTime++;
+          remainderAccumulator -= sampleRate;
+        }
+      }
+    }
+    wavFile.close();
+  }
 
   int16_t currentSample = lastOutputSample;
   while (currentSample != DAC_SILENCE) {
@@ -331,7 +365,7 @@ bool playWav(const char *filename) {
     delayMicroseconds(100);
   }
   dacWrite(AUDIO_PIN, DAC_SILENCE);
-  delay(150);
+  delay(50);
   disableAudioOutput();
   return true;
 }
@@ -340,17 +374,14 @@ void playBeep(int freq, int duration_ms) {
   pinMode(AUDIO_PIN, OUTPUT);
   long delay_us = 1000000L / (freq * 2);
   long num_cycles = (duration_ms * 1000L) / (delay_us * 2);
+  // Gentle, soft beep (only +- 6 amplitude steps around silence 128)
   for (long i = 0; i < num_cycles; i++) {
-    dacWrite(AUDIO_PIN, 160);
+    dacWrite(AUDIO_PIN, 134);
     delayMicroseconds(delay_us);
-    dacWrite(AUDIO_PIN, 96);
+    dacWrite(AUDIO_PIN, 122);
     delayMicroseconds(delay_us);
   }
-  // Smooth ramp-down to 0 to eliminate audio clicking noise
-  for (int v = 96; v >= 0; v--) {
-    dacWrite(AUDIO_PIN, v);
-    delayMicroseconds(20);
-  }
+  dacWrite(AUDIO_PIN, DAC_SILENCE);
   pinMode(AUDIO_PIN, INPUT);
 }
 
@@ -1894,7 +1925,7 @@ void runEnroll() {
           step1_ok = true;
           break;
         } else {
-          showResult("Poor Image Placement", "Try scanning again", false, C_SUBTEXT);
+          showResult("Poor Finger Placement", "Try scanning again", false, C_SUBTEXT);
           delay(2000);
           break;
         }
@@ -1941,7 +1972,7 @@ void runEnroll() {
           step2_ok = true;
           break;
         } else {
-          showResult("Poor Image Placement", "Try scanning again", false, C_SUBTEXT);
+          showResult("Poor Finger Placement", "Try scanning again", false, C_SUBTEXT);
           delay(2000);
           break;
         }
