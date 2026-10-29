@@ -1314,17 +1314,20 @@ void runAttendanceScan() {
                     id, lastCheckInDay[id], currentDay);
     }
 
-    // Check if employee has ALREADY completed check-in and check-out today!
-    if (!checkedIn[id] && lastCheckInDay[id] == currentDay && lastCheckOutDay[id] == currentDay && lastCheckInDay[id] != 0) {
-      showResult(name, "Shift Completed For Today", false, C_SUBTEXT);
-      playBeep(600, 100);
-      delay(60);
-      playBeep(800, 120);
-      Serial.printf("EVENT : REJECTED (Already checked in and checked out for today)\nNAME  : %s\n", name);
-      fpWaitLift();
-      delay(RESULT_DWELL);
-      drawHomeScreen();
-      return;
+    // If offline (no Wi-Fi), use local memory to prevent duplicate check-outs on completed shifts.
+    // When online, the cloud server is the single source of truth (respects website resets & edits).
+    if (WiFi.status() != WL_CONNECTED) {
+      if (!checkedIn[id] && lastCheckInDay[id] == currentDay && lastCheckOutDay[id] == currentDay && lastCheckInDay[id] != 0) {
+        showResult(name, "Shift Completed For Today", false, C_SUBTEXT);
+        playBeep(600, 100);
+        delay(60);
+        playBeep(800, 120);
+        Serial.printf("EVENT : REJECTED (Offline local: already checked in and checked out for today)\nNAME  : %s\n", name);
+        fpWaitLift();
+        delay(RESULT_DWELL);
+        drawHomeScreen();
+        return;
+      }
     }
 
     // Biometric match verified! Illuminate fingerprint in emerald green and show connecting badge
