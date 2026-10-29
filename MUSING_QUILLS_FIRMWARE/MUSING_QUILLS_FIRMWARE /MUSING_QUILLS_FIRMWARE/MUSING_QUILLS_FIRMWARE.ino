@@ -581,6 +581,11 @@ void loadAll() {
     lastCheckOutDay[i] = prefs.getULong(k, 0);
     snprintf(k, sizeof(k), "nm%d", i);
     prefs.getString(k, empNames[i], NAME_MAX_LEN);
+    if (strlen(empNames[i]) == 0) {
+      checkedIn[i] = false;
+      lastCheckInDay[i] = 0;
+      lastCheckOutDay[i] = 0;
+    }
   }
   adminEnrolled = prefs.getBool("adminOK", false);
   serverUrl = prefs.getString("srv", serverUrl);
@@ -620,14 +625,21 @@ void saveEmpName(uint8_t id, const char *n) {
   prefs.putString(k, n);
   prefs.end();
 }
-void clearEmpName(uint8_t id) {
+void clearEmpSlot(uint8_t id) {
   empNames[id][0] = '\0';
+  checkedIn[id] = false;
+  lastCheckInDay[id] = 0;
+  lastCheckOutDay[id] = 0;
+
   prefs.begin("qclk", false);
   char k[10];
-  snprintf(k, sizeof(k), "nm%d", id);
-  prefs.putString(k, "");
+  snprintf(k, sizeof(k), "nm%d", id); prefs.remove(k);
+  snprintf(k, sizeof(k), "ci%d", id); prefs.remove(k);
+  snprintf(k, sizeof(k), "cd%d", id); prefs.remove(k);
+  snprintf(k, sizeof(k), "co%d", id); prefs.remove(k);
   prefs.end();
 }
+void clearEmpName(uint8_t id) { clearEmpSlot(id); }
 void setAdminEnrolled(bool v) {
   adminEnrolled = v;
   prefs.begin("qclk", false);
@@ -1273,9 +1285,23 @@ void runAttendanceScan() {
       drawHomeScreen();
       return;
     }
+
+    if (strlen(empNames[id]) == 0) {
+      Serial.printf("[ATTENDANCE] Slot %d matched in sensor but has NO enrolled employee name (deleted profile)! Purging orphan model.\n", id);
+      finger.deleteModel(id);
+      clearEmpSlot(id);
+      sfxInvalid();
+      drawFingerprintIcon(112, 66, C_PRIMARY);
+      showResult("NOT RECOGNISED", "Please enrol with admin", false, C_PRIMARY);
+      fpWaitLift();
+      delay(RESULT_DWELL);
+      drawHomeScreen();
+      return;
+    }
+
     char ts[28];
     clk.fmtFull(ts, sizeof(ts));
-    const char *name = (strlen(empNames[id]) > 0) ? empNames[id] : "Unknown";
+    const char *name = empNames[id];
 
     uint32_t currentDay = clk.now() / 86400UL;
     // Smart Local Reset: If last check-in was on a previous day, auto-reset
@@ -2031,17 +2057,13 @@ bool executeDeleteConfirmation(uint8_t slot) {
       continue;
     }
     if (hit(c, 25, 155, 125, 48)) {
-      if (finger.deleteModel(slot) == FINGERPRINT_OK) {
-        char msg[32];
-        snprintf(msg, sizeof(msg), "%s removed", empNames[slot]);
-        saveCheckedIn(slot, false);
-        sendDeletionToServer(slot);
-        clearEmpName(slot);
-        showResult("DELETED", msg, true, C_SUCCESS);
-        Serial.printf("DELETE OK: ID %d\n", slot);
-      } else {
-        showResult("ERROR", "Sensor returned an error", false, C_SUBTEXT);
-      }
+      char msg[32];
+      snprintf(msg, sizeof(msg), "%s removed", empNames[slot]);
+      finger.deleteModel(slot);
+      sendDeletionToServer(slot);
+      clearEmpSlot(slot);
+      showResult("DELETED", msg, true, C_SUCCESS);
+      Serial.printf("DELETE OK: ID %d\n", slot);
       delay(RESULT_DWELL);
       return true;
     }
