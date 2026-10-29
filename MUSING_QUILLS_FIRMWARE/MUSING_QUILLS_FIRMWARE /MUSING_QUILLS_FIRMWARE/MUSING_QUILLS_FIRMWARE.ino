@@ -39,7 +39,7 @@ String serverUrl = "https://attendancemq.quantumclk.tech";
 // ═══════════════════════════════════════════════════════════
 #define SAMPLE_RATE 16000
 #define SAMPLE_DELAY_US (1000000 / SAMPLE_RATE)
-#define DEFAULT_VOLUME 10 // Crystal-clear personal proximity volume
+#define DEFAULT_VOLUME 14 // Crystal-clear personal proximity volume with high-res oversampling
 #define FP_SCAN_TIMEOUT 12000UL
 #define RESULT_DWELL 2800UL
 #define DEBOUNCE_MS 260UL
@@ -295,28 +295,38 @@ bool playWav(const char *filename) {
 
   uint8_t playbackVolume = DEFAULT_VOLUME;
 
-  uint8_t lastOutputSample = DAC_SILENCE;
   const uint32_t sampleDelayUs = (sampleRate > 0) ? (1000000UL / sampleRate) : 62;
-  const uint32_t stepUs = (sampleDelayUs > 2) ? ((sampleDelayUs - 2) / 2) : 30;
+  // 4x oversampling (~64 kHz DAC rate): pushes quantization error up to 32 kHz ultrasonic band
+  const uint32_t subStepUs = (sampleDelayUs >= 8) ? ((sampleDelayUs - 6) / 4) : 14;
+
+  int32_t errAcc = 0;
+  uint8_t lastOutputSample = DAC_SILENCE;
 
   for (size_t i = 0; i < bytesRead; i++) {
-    int16_t amp = (int16_t)s_audioBuffer[i] - DAC_SILENCE;
-    int16_t outAmp = (amp * (int16_t)playbackVolume) / 100;
-    int16_t sample1 = constrain(DAC_SILENCE + outAmp, 0, 255);
+    int32_t currAmp = (int32_t)((int16_t)s_audioBuffer[i] - DAC_SILENCE) * (int32_t)playbackVolume;
+    int32_t nextAmp = (i + 1 < bytesRead)
+      ? (int32_t)((int16_t)s_audioBuffer[i + 1] - DAC_SILENCE) * (int32_t)playbackVolume
+      : currAmp;
 
-    // 2x Linear Interpolation: inserts smooth midpoint sample to eliminate 8-bit DAC staircase noise
-    int16_t nextAmp = (i + 1 < bytesRead) ? ((int16_t)s_audioBuffer[i + 1] - DAC_SILENCE) : amp;
-    int16_t nextOutAmp = (nextAmp * (int16_t)playbackVolume) / 100;
-    int16_t sample2 = constrain(DAC_SILENCE + nextOutAmp, 0, 255);
-    int16_t midSample = (sample1 + sample2) / 2;
+    int32_t delta = nextAmp - currAmp;
 
-    dacWrite(AUDIO_PIN, (uint8_t)sample1);
-    delayMicroseconds(stepUs);
+    // 4 sub-steps per audio frame: fine-grained linear interpolation with noise shaping
+    for (int step = 0; step < 4; step++) {
+      int32_t targetVal = currAmp + (delta * step) / 4;
+      int32_t valWithErr = targetVal + errAcc;
 
-    dacWrite(AUDIO_PIN, (uint8_t)midSample);
-    delayMicroseconds(stepUs);
+      int16_t dacLevel = (valWithErr >= 0) ? ((valWithErr + 50) / 100) : ((valWithErr - 50) / 100);
+      errAcc = valWithErr - (dacLevel * 100);
 
-    lastOutputSample = (uint8_t)midSample;
+      // Keep error accumulator tightly bounded
+      if (errAcc > 100) errAcc = 100;
+      else if (errAcc < -100) errAcc = -100;
+
+      uint8_t outByte = (uint8_t)constrain(DAC_SILENCE + dacLevel, 0, 255);
+      dacWrite(AUDIO_PIN, outByte);
+      delayMicroseconds(subStepUs);
+      lastOutputSample = outByte;
+    }
   }
 
   // Smooth ramp-down to DAC_SILENCE to prevent any trailing click
