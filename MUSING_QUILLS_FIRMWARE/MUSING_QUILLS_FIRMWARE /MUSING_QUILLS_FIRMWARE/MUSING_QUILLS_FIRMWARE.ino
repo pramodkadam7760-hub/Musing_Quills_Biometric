@@ -283,7 +283,7 @@ bool playWav(const char *filename) {
   enableAudioOutput();
 
   uint8_t playbackVolume = DEFAULT_VOLUME;
-  if (strcmp(filename, WAV_INVALID) == 0 || strcmp(filename, WAV_ENROLL_SUCCESS) == 0 || strcmp(filename, WAV_ENROLL_FAILED) == 0) {
+  if (strcmp(filename, WAV_ENROLL_SUCCESS) == 0 || strcmp(filename, WAV_ENROLL_FAILED) == 0) {
     playbackVolume = (playbackVolume * 85) / 100;
   }
 
