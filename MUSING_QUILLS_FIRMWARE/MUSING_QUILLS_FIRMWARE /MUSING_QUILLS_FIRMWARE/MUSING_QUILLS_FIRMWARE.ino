@@ -283,26 +283,29 @@ bool playWav(const char *filename) {
   enableAudioOutput();
 
   uint8_t playbackVolume = DEFAULT_VOLUME;
-  if (strcmp(filename, WAV_ENROLL_SUCCESS) == 0 || strcmp(filename, WAV_ENROLL_FAILED) == 0) {
-    playbackVolume = (playbackVolume * 85) / 100;
-  }
 
   uint8_t lastOutputSample = DAC_SILENCE;
   const uint32_t sampleDelayUs = (sampleRate > 0) ? (1000000UL / sampleRate) : 62;
-  const uint32_t waitUs1 = (sampleDelayUs > 2) ? (sampleDelayUs - 2) : 1;
-  const uint32_t waitUs2 = (sampleDelayUs > 1) ? (sampleDelayUs - 1) : 1;
+  const uint32_t stepUs = (sampleDelayUs > 2) ? ((sampleDelayUs - 2) / 2) : 30;
 
   for (size_t i = 0; i < bytesRead; i++) {
     int16_t amp = (int16_t)s_audioBuffer[i] - DAC_SILENCE;
     int16_t outAmp = (amp * (int16_t)playbackVolume) / 100;
-    int16_t outputSample = DAC_SILENCE + outAmp;
-    if (outputSample < 0) outputSample = 0;
-    if (outputSample > 255) outputSample = 255;
+    int16_t sample1 = constrain(DAC_SILENCE + outAmp, 0, 255);
 
-    dacWrite(AUDIO_PIN, (uint8_t)outputSample);
-    lastOutputSample = (uint8_t)outputSample;
+    // 2x Linear Interpolation: inserts smooth midpoint sample to eliminate 8-bit DAC staircase noise
+    int16_t nextAmp = (i + 1 < bytesRead) ? ((int16_t)s_audioBuffer[i + 1] - DAC_SILENCE) : amp;
+    int16_t nextOutAmp = (nextAmp * (int16_t)playbackVolume) / 100;
+    int16_t sample2 = constrain(DAC_SILENCE + nextOutAmp, 0, 255);
+    int16_t midSample = (sample1 + sample2) / 2;
 
-    delayMicroseconds((i & 1) ? waitUs2 : waitUs1);
+    dacWrite(AUDIO_PIN, (uint8_t)sample1);
+    delayMicroseconds(stepUs);
+
+    dacWrite(AUDIO_PIN, (uint8_t)midSample);
+    delayMicroseconds(stepUs);
+
+    lastOutputSample = (uint8_t)midSample;
   }
 
   // Smooth ramp-down to DAC_SILENCE to prevent any trailing click
