@@ -39,7 +39,7 @@ String serverUrl = "https://attendancemq.quantumclk.tech";
 // ═══════════════════════════════════════════════════════════
 #define SAMPLE_RATE 16000
 #define SAMPLE_DELAY_US (1000000 / SAMPLE_RATE)
-#define DEFAULT_VOLUME 6 // Personal proximity volume with Delta-Sigma error diffusion
+#define DEFAULT_VOLUME 10 // Crystal-clear personal proximity volume
 #define FP_SCAN_TIMEOUT 12000UL
 #define RESULT_DWELL 2800UL
 #define DEBOUNCE_MS 260UL
@@ -202,13 +202,10 @@ static bool readFourCC(File &file, char id[5]) {
 
 static void enableAudioOutput() {
   dacWrite(AUDIO_PIN, DAC_SILENCE);
-  delay(50);
 }
 
 static void disableAudioOutput() {
   dacWrite(AUDIO_PIN, DAC_SILENCE);
-  delay(50);
-  pinMode(AUDIO_PIN, INPUT);
 }
 
 #define MAX_AUDIO_BUFFER_SIZE 48000
@@ -340,8 +337,6 @@ void playBeep(int freq, int duration_ms) {
     }
   }
   dacWrite(AUDIO_PIN, DAC_SILENCE);
-  delay(15);
-  pinMode(AUDIO_PIN, INPUT);
 }
 
 void sfxCheckin() {
