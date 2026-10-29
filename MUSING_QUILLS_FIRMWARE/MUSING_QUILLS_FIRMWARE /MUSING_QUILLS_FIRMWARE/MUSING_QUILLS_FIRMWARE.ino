@@ -39,7 +39,7 @@ String serverUrl = "https://attendancemq.quantumclk.tech";
 // ═══════════════════════════════════════════════════════════
 #define SAMPLE_RATE 16000
 #define SAMPLE_DELAY_US (1000000 / SAMPLE_RATE)
-#define DEFAULT_VOLUME 18 // Studio clean speech volume (18% of full scale = gentle room level, 0 distortion, 0 hiss)
+#define DEFAULT_VOLUME 4 // Personal proximity volume: audible only to the person standing at the scanner (~4% scale)
 #define FP_SCAN_TIMEOUT 12000UL
 #define RESULT_DWELL 2800UL
 #define DEBOUNCE_MS 260UL
@@ -339,9 +339,9 @@ void playBeep(int freq, int duration_ms) {
   long step_us = period_us / 16;
   if (step_us < 1) step_us = 1;
   long num_cycles = (duration_ms * 1000L) / period_us;
-  // 16-point sine wave table with very gentle amplitude (+- 4 steps around DAC_SILENCE 128)
-  // Pure sine wave: ZERO harsh square-wave harmonics, soft & mellow chime
-  static const int8_t sine16[16] = {0, 2, 3, 4, 4, 3, 2, 0, -2, -3, -4, -4, -3, -2, 0, 0};
+  // 16-point sine wave table with ultra-gentle amplitude (+- 2 steps around DAC_SILENCE 128)
+  // Pure sine wave: ZERO harsh harmonics, personal-proximity soft chime
+  static const int8_t sine16[16] = {0, 1, 2, 2, 2, 2, 1, 0, -1, -2, -2, -2, -2, -1, 0, 0};
   for (long c = 0; c < num_cycles; c++) {
     for (int s = 0; s < 16; s++) {
       dacWrite(AUDIO_PIN, DAC_SILENCE + sine16[s]);
@@ -349,7 +349,7 @@ void playBeep(int freq, int duration_ms) {
     }
   }
   dacWrite(AUDIO_PIN, DAC_SILENCE);
-  delay(20);
+  delay(15);
   pinMode(AUDIO_PIN, INPUT);
 }
 
