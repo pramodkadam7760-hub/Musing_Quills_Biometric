@@ -14,6 +14,7 @@
 #include <XPT2046_Touchscreen.h>
 #include <pgmspace.h>
 #include "esp_timer.h"
+#include "esp_wifi.h"
 
 // 1. Office Wi-Fi details (default):
 String ssid = "Quantumclk.Tech";
@@ -201,6 +202,9 @@ static bool readFourCC(File &file, char id[5]) {
 }
 
 static void enableAudioOutput() {
+  if (WiFi.status() == WL_CONNECTED) {
+    esp_wifi_set_ps(WIFI_PS_NONE); // Disable Wi-Fi modem sleep pulsing during audio playback
+  }
   pinMode(AUDIO_PIN, OUTPUT);
   // Smooth micro-ramp 0V -> 1.65V (DAC_SILENCE 128) over 3.2 ms to eliminate turn-on click
   for (int v = 0; v <= DAC_SILENCE; v += 4) {
@@ -220,6 +224,9 @@ static void disableAudioOutput() {
   // Hard low-impedance clamp to GND (0V) silences sensor polling pulses & idle noise
   pinMode(AUDIO_PIN, OUTPUT);
   digitalWrite(AUDIO_PIN, LOW);
+  if (WiFi.status() == WL_CONNECTED) {
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM); // Re-enable power saving when audio finishes
+  }
 }
 
 #define MAX_AUDIO_BUFFER_SIZE 48000
@@ -306,35 +313,31 @@ bool playWav(const char *filename) {
     int16_t diffCurr = (int16_t)s_audioBuffer[i] - DAC_SILENCE;
     int16_t diffNext = (i + 1 < bytesRead) ? ((int16_t)s_audioBuffer[i + 1] - DAC_SILENCE) : diffCurr;
 
-    // Studio Noise Gate: completely squelches ambient mic noise and idle hiss during word pauses
-    if (abs(diffCurr) <= 3 && abs(diffNext) <= 3) {
-      dacWrite(AUDIO_PIN, DAC_SILENCE);
-      delayMicroseconds(subStepUs * 4);
-      errAcc = 0;
-      lastOutputSample = DAC_SILENCE;
-      continue;
-    }
-
     int32_t currAmp = (int32_t)diffCurr * (int32_t)playbackVolume;
     int32_t nextAmp = (int32_t)diffNext * (int32_t)playbackVolume;
     int32_t delta = nextAmp - currAmp;
 
-    // 4 sub-steps per audio frame: fine-grained linear interpolation with noise shaping
+    // 4 sub-steps per audio frame: continuous, seamless 64kHz oversampling with zero gate chattering
     for (int step = 0; step < 4; step++) {
       int32_t targetVal = currAmp + (delta * step) / 4;
-      int32_t valWithErr = targetVal + errAcc;
+      int16_t dacLevel = 0;
 
-      int16_t dacLevel = (valWithErr >= 0) ? ((valWithErr + 50) / 100) : ((valWithErr - 50) / 100);
-      errAcc = valWithErr - (dacLevel * 100);
+      if (targetVal == 0) {
+        errAcc = 0;
+        dacLevel = 0;
+      } else {
+        int32_t valWithErr = targetVal + errAcc;
+        dacLevel = (valWithErr >= 0) ? ((valWithErr + 50) / 100) : ((valWithErr - 50) / 100);
+        errAcc = valWithErr - (dacLevel * 100);
 
-      // Leaky damping for low-level phonemes to cleanly prevent limit-cycle hiss
-      if (abs(targetVal) < 30) {
-        errAcc = (errAcc * 3) / 4;
+        // Gentle progressive damping for soft decaying phonemes
+        if (abs(targetVal) < 25) {
+          errAcc = (errAcc * 3) / 4;
+        }
+
+        if (errAcc > 80) errAcc = 80;
+        else if (errAcc < -80) errAcc = -80;
       }
-
-      // Keep error accumulator tightly bounded
-      if (errAcc > 80) errAcc = 80;
-      else if (errAcc < -80) errAcc = -80;
 
       uint8_t outByte = (uint8_t)constrain(DAC_SILENCE + dacLevel, 0, 255);
       dacWrite(AUDIO_PIN, outByte);
@@ -1329,10 +1332,12 @@ void runAttendanceScan() {
         } else {
           showResult(name, "Checked in successfully", true, C_SUCCESS);
         }
+        delay(120); // Allow Wi-Fi TCP socket close & power rail to completely settle
         sfxCheckin();
       } else {
         saveCheckedIn(id, false);
         showResult(name, "Checked out successfully", true, C_SUBTEXT);
+        delay(120); // Allow Wi-Fi TCP socket close & power rail to completely settle
         sfxCheckout();
       }
       Serial.println("---ATTENDANCE---");
