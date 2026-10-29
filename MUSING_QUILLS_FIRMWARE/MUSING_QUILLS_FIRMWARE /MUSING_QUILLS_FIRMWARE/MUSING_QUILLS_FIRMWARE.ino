@@ -201,11 +201,25 @@ static bool readFourCC(File &file, char id[5]) {
 }
 
 static void enableAudioOutput() {
+  pinMode(AUDIO_PIN, OUTPUT);
+  // Smooth micro-ramp 0V -> 1.65V (DAC_SILENCE 128) over 3.2 ms to eliminate turn-on click
+  for (int v = 0; v <= DAC_SILENCE; v += 4) {
+    dacWrite(AUDIO_PIN, v);
+    delayMicroseconds(100);
+  }
   dacWrite(AUDIO_PIN, DAC_SILENCE);
 }
 
 static void disableAudioOutput() {
-  dacWrite(AUDIO_PIN, DAC_SILENCE);
+  // Smooth micro-ramp 1.65V -> 0V over 3.2 ms to eliminate turn-off click
+  for (int v = DAC_SILENCE; v >= 0; v -= 4) {
+    dacWrite(AUDIO_PIN, v);
+    delayMicroseconds(100);
+  }
+  dacWrite(AUDIO_PIN, 0);
+  // Hard low-impedance clamp to GND (0V) silences sensor polling pulses & idle noise
+  pinMode(AUDIO_PIN, OUTPUT);
+  digitalWrite(AUDIO_PIN, LOW);
 }
 
 #define MAX_AUDIO_BUFFER_SIZE 48000
@@ -322,7 +336,7 @@ bool playWav(const char *filename) {
 }
 
 void playBeep(int freq, int duration_ms) {
-  pinMode(AUDIO_PIN, OUTPUT);
+  enableAudioOutput();
   long period_us = 1000000L / freq;
   long step_us = period_us / 16;
   if (step_us < 1) step_us = 1;
@@ -337,6 +351,7 @@ void playBeep(int freq, int duration_ms) {
     }
   }
   dacWrite(AUDIO_PIN, DAC_SILENCE);
+  disableAudioOutput();
 }
 
 void sfxCheckin() {
@@ -2412,8 +2427,7 @@ void setup() {
   Serial.begin(115200);
   while (!Serial)
     delay(10);
-  pinMode(AUDIO_PIN, OUTPUT);
-  digitalWrite(AUDIO_PIN, LOW);
+  disableAudioOutput();
   clk.set(8, 0, 0, 1, 1, 2025);
   loadAll();
   if (!LittleFS.begin(true)) {
