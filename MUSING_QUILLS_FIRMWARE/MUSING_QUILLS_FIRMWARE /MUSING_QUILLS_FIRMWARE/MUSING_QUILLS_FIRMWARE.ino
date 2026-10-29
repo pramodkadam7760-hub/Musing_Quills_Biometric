@@ -211,6 +211,9 @@ static void disableAudioOutput() {
   pinMode(AUDIO_PIN, INPUT);
 }
 
+#define MAX_AUDIO_BUFFER_SIZE 48000
+static uint8_t s_audioBuffer[MAX_AUDIO_BUFFER_SIZE];
+
 bool playWav(const char *filename) {
   File wavFile = LittleFS.open(filename, "r");
   if (!wavFile) {
@@ -261,10 +264,19 @@ bool playWav(const char *filename) {
     wavFile.seek(chunkStart + chunkSize + (chunkSize & 1U));
   }
 
-  if (!formatFound || !dataFound || audioFormat != 1 || channels != 1 || bitsPerSample != 8) {
-    Serial.printf("[AUDIO] Format mismatch in %s: fmt=%d (need 1), ch=%d (need 1), bits=%d (need 8)\n",
-                  filename, audioFormat, channels, bitsPerSample);
+  if (!formatFound || !dataFound || audioFormat != 1 || channels != 1 || bitsPerSample != 8 || sampleRate == 0) {
+    Serial.printf("[AUDIO] Format mismatch in %s: fmt=%d, ch=%d, bits=%d, rate=%d\n",
+                  filename, audioFormat, channels, bitsPerSample, sampleRate);
     wavFile.close();
+    return false;
+  }
+
+  // Load entire audio file into static RAM buffer in 1 shot: 0 SPI delay during playback!
+  size_t bytesToPlay = (dataSize > sizeof(s_audioBuffer)) ? sizeof(s_audioBuffer) : dataSize;
+  size_t bytesRead = wavFile.read(s_audioBuffer, bytesToPlay);
+  wavFile.close();
+
+  if (bytesRead == 0) {
     return false;
   }
 
@@ -279,82 +291,34 @@ bool playWav(const char *filename) {
   const uint32_t basePeriodUs = 1000000UL / sampleRate;
   const uint32_t periodRemainder = 1000000UL % sampleRate;
   uint32_t remainderAccumulator = 0;
-  int64_t nextSampleTime = esp_timer_get_time() + basePeriodUs;
   uint8_t lastOutputSample = DAC_SILENCE;
 
-  uint8_t *audioBuffer = (uint8_t *)malloc(dataSize);
-  if (audioBuffer) {
-    // In-memory playback: 0 SPI delay, pristine crystal clear audio with no robotic buzz!
-    wavFile.read(audioBuffer, dataSize);
-    wavFile.close();
+  // Start timer right before playback loop for exact sample timing
+  int64_t nextSampleTime = esp_timer_get_time() + basePeriodUs;
 
-    for (uint32_t i = 0; i < dataSize; i++) {
-      int16_t amplitude = (int16_t)audioBuffer[i] - DAC_SILENCE;
-      amplitude = (amplitude * playbackVolume) / 100;
-      int16_t outputSample = DAC_SILENCE + amplitude;
-      outputSample = constrain(outputSample, 0, 255);
+  for (size_t i = 0; i < bytesRead; i++) {
+    int16_t amplitude = (int16_t)s_audioBuffer[i] - DAC_SILENCE;
+    amplitude = (amplitude * (int16_t)playbackVolume) / 100;
+    int16_t outputSample = DAC_SILENCE + amplitude;
+    if (outputSample < 0) outputSample = 0;
+    if (outputSample > 255) outputSample = 255;
 
-      int64_t now = esp_timer_get_time();
-      if (now - nextSampleTime > (int64_t)(basePeriodUs * 2U + 2U)) {
-        nextSampleTime = now;
-        remainderAccumulator = 0;
-      }
-
-      while (esp_timer_get_time() < nextSampleTime) {
-        // wait for next sample interval
-      }
-
-      dacWrite(AUDIO_PIN, (uint8_t)outputSample);
-      lastOutputSample = (uint8_t)outputSample;
-
-      nextSampleTime += basePeriodUs;
-      remainderAccumulator += periodRemainder;
-      if (remainderAccumulator >= sampleRate) {
-        nextSampleTime++;
-        remainderAccumulator -= sampleRate;
-      }
+    while (esp_timer_get_time() < nextSampleTime) {
+      // wait until exact sample microsecond
     }
-    free(audioBuffer);
-  } else {
-    // Streaming fallback if RAM is constrained
-    uint8_t chunk[512];
-    uint32_t bytesRemaining = dataSize;
-    while (bytesRemaining > 0 && wavFile.available()) {
-      size_t toRead = (bytesRemaining > sizeof(chunk)) ? sizeof(chunk) : bytesRemaining;
-      size_t bytesRead = wavFile.read(chunk, toRead);
-      if (bytesRead == 0) break;
-      bytesRemaining -= bytesRead;
 
-      for (size_t i = 0; i < bytesRead; i++) {
-        int16_t amplitude = (int16_t)chunk[i] - DAC_SILENCE;
-        amplitude = (amplitude * playbackVolume) / 100;
-        int16_t outputSample = DAC_SILENCE + amplitude;
-        outputSample = constrain(outputSample, 0, 255);
+    dacWrite(AUDIO_PIN, (uint8_t)outputSample);
+    lastOutputSample = (uint8_t)outputSample;
 
-        int64_t now = esp_timer_get_time();
-        if (now - nextSampleTime > (int64_t)(basePeriodUs * 2U + 2U)) {
-          nextSampleTime = now;
-          remainderAccumulator = 0;
-        }
-
-        while (esp_timer_get_time() < nextSampleTime) {
-          // wait for next sample interval
-        }
-
-        dacWrite(AUDIO_PIN, (uint8_t)outputSample);
-        lastOutputSample = (uint8_t)outputSample;
-
-        nextSampleTime += basePeriodUs;
-        remainderAccumulator += periodRemainder;
-        if (remainderAccumulator >= sampleRate) {
-          nextSampleTime++;
-          remainderAccumulator -= sampleRate;
-        }
-      }
+    nextSampleTime += basePeriodUs;
+    remainderAccumulator += periodRemainder;
+    if (remainderAccumulator >= sampleRate) {
+      nextSampleTime++;
+      remainderAccumulator -= sampleRate;
     }
-    wavFile.close();
   }
 
+  // Smooth ramp-down to DAC_SILENCE to prevent any trailing click
   int16_t currentSample = lastOutputSample;
   while (currentSample != DAC_SILENCE) {
     if (currentSample < DAC_SILENCE)
@@ -362,10 +326,10 @@ bool playWav(const char *filename) {
     else
       currentSample--;
     dacWrite(AUDIO_PIN, (uint8_t)currentSample);
-    delayMicroseconds(100);
+    delayMicroseconds(50);
   }
   dacWrite(AUDIO_PIN, DAC_SILENCE);
-  delay(50);
+  delay(30);
   disableAudioOutput();
   return true;
 }
