@@ -39,7 +39,7 @@ String serverUrl = "https://attendancemq.quantumclk.tech";
 // ═══════════════════════════════════════════════════════════
 #define SAMPLE_RATE 16000
 #define SAMPLE_DELAY_US (1000000 / SAMPLE_RATE)
-#define DEFAULT_VOLUME 100 // Pre-attenuated WAV files: 100% gives pristine dynamic range at gentle volume
+#define DEFAULT_VOLUME 18 // Studio clean speech volume (18% of full scale = gentle room level, 0 distortion, 0 hiss)
 #define FP_SCAN_TIMEOUT 12000UL
 #define RESULT_DWELL 2800UL
 #define DEBOUNCE_MS 260UL
@@ -283,10 +283,9 @@ bool playWav(const char *filename) {
   enableAudioOutput();
 
   uint8_t playbackVolume = DEFAULT_VOLUME;
-  if (strcmp(filename, WAV_INVALID) == 0)
-    playbackVolume = (DEFAULT_VOLUME > 10) ? (DEFAULT_VOLUME - 10) : DEFAULT_VOLUME;
-  else if (strcmp(filename, WAV_ENROLL_SUCCESS) == 0 || strcmp(filename, WAV_ENROLL_FAILED) == 0)
-    playbackVolume = (DEFAULT_VOLUME > 10) ? (DEFAULT_VOLUME - 10) : DEFAULT_VOLUME;
+  if (strcmp(filename, WAV_INVALID) == 0 || strcmp(filename, WAV_ENROLL_SUCCESS) == 0 || strcmp(filename, WAV_ENROLL_FAILED) == 0) {
+    playbackVolume = (playbackVolume * 85) / 100;
+  }
 
   const uint32_t basePeriodUs = 1000000UL / sampleRate;
   const uint32_t periodRemainder = 1000000UL % sampleRate;
@@ -336,16 +335,21 @@ bool playWav(const char *filename) {
 
 void playBeep(int freq, int duration_ms) {
   pinMode(AUDIO_PIN, OUTPUT);
-  long delay_us = 1000000L / (freq * 2);
-  long num_cycles = (duration_ms * 1000L) / (delay_us * 2);
-  // Gentle, soft beep (only +- 6 amplitude steps around silence 128)
-  for (long i = 0; i < num_cycles; i++) {
-    dacWrite(AUDIO_PIN, 134);
-    delayMicroseconds(delay_us);
-    dacWrite(AUDIO_PIN, 122);
-    delayMicroseconds(delay_us);
+  long period_us = 1000000L / freq;
+  long step_us = period_us / 16;
+  if (step_us < 1) step_us = 1;
+  long num_cycles = (duration_ms * 1000L) / period_us;
+  // 16-point sine wave table with very gentle amplitude (+- 4 steps around DAC_SILENCE 128)
+  // Pure sine wave: ZERO harsh square-wave harmonics, soft & mellow chime
+  static const int8_t sine16[16] = {0, 2, 3, 4, 4, 3, 2, 0, -2, -3, -4, -4, -3, -2, 0, 0};
+  for (long c = 0; c < num_cycles; c++) {
+    for (int s = 0; s < 16; s++) {
+      dacWrite(AUDIO_PIN, DAC_SILENCE + sine16[s]);
+      delayMicroseconds(step_us);
+    }
   }
   dacWrite(AUDIO_PIN, DAC_SILENCE);
+  delay(20);
   pinMode(AUDIO_PIN, INPUT);
 }
 
