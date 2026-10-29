@@ -287,40 +287,22 @@ bool playWav(const char *filename) {
     playbackVolume = (playbackVolume * 85) / 100;
   }
 
-  const uint32_t basePeriodUs = 1000000UL / sampleRate;
-  const uint32_t periodRemainder = 1000000UL % sampleRate;
-  uint32_t remainderAccumulator = 0;
   uint8_t lastOutputSample = DAC_SILENCE;
+  const uint32_t sampleDelayUs = (sampleRate > 0) ? (1000000UL / sampleRate) : 62;
+  const uint32_t waitUs1 = (sampleDelayUs > 2) ? (sampleDelayUs - 2) : 1;
+  const uint32_t waitUs2 = (sampleDelayUs > 1) ? (sampleDelayUs - 1) : 1;
 
-  // Start timer right before playback loop for exact sample timing
-  int64_t nextSampleTime = esp_timer_get_time() + basePeriodUs;
-
-  int32_t errorAccumulator = 0;
   for (size_t i = 0; i < bytesRead; i++) {
-    // 1st-order Delta-Sigma noise shaping & error diffusion:
-    // Preserves fractional vocal energy across samples instead of truncating quiet sounds to dead zero
-    int32_t rawAmp = ((int32_t)s_audioBuffer[i] - DAC_SILENCE) * (int32_t)playbackVolume;
-    int32_t valWithErr = rawAmp + errorAccumulator;
-    int32_t outAmp = (valWithErr >= 0) ? ((valWithErr + 50) / 100) : ((valWithErr - 50) / 100);
-    errorAccumulator = valWithErr - (outAmp * 100);
-
+    int16_t amp = (int16_t)s_audioBuffer[i] - DAC_SILENCE;
+    int16_t outAmp = (amp * (int16_t)playbackVolume) / 100;
     int16_t outputSample = DAC_SILENCE + outAmp;
     if (outputSample < 0) outputSample = 0;
     if (outputSample > 255) outputSample = 255;
 
-    while (esp_timer_get_time() < nextSampleTime) {
-      // wait until exact sample microsecond
-    }
-
     dacWrite(AUDIO_PIN, (uint8_t)outputSample);
     lastOutputSample = (uint8_t)outputSample;
 
-    nextSampleTime += basePeriodUs;
-    remainderAccumulator += periodRemainder;
-    if (remainderAccumulator >= sampleRate) {
-      nextSampleTime++;
-      remainderAccumulator -= sampleRate;
-    }
+    delayMicroseconds((i & 1) ? waitUs2 : waitUs1);
   }
 
   // Smooth ramp-down to DAC_SILENCE to prevent any trailing click
